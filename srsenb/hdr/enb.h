@@ -37,6 +37,12 @@
 #include <string>
 #include <pthread.h>
 
+#ifdef HAVE_EMPOWER_AGENT
+#include "agent/empower_agent.h"
+#else
+#include "agent/dummy_agent.h"
+#endif /* HAVE_EMPOWER_AGENT */
+
 #include "phy/phy.h"
 #include "mac/mac.h"
 #include "upper/rrc.h"
@@ -100,6 +106,7 @@ typedef struct {
   std::string   rrc_level;
   std::string   gtpu_level;
   std::string   s1ap_level;
+  std::string   agent_level;
   std::string   all_level;
   int           phy_hex_limit;
   int           mac_hex_limit;
@@ -108,6 +115,7 @@ typedef struct {
   int           rrc_hex_limit;
   int           gtpu_hex_limit;
   int           s1ap_hex_limit;
+  int           agent_hex_limit;
   int           all_hex_limit;
   std::string   filename;
 }log_args_t;
@@ -172,6 +180,11 @@ private:
   srsenb::rrc        rrc;
   srsenb::gtpu       gtpu;
   srsenb::s1ap       s1ap;
+#ifdef HAVE_EMPOWER_AGENT
+  srsenb::empower_agent agent;
+#else
+  srsenb::dummy_agent agent;
+#endif /* HAVE_EMPOWER_AGENT */
 
   srslte::logger     logger;
   srslte::log_filter rf_log;
@@ -182,6 +195,7 @@ private:
   srslte::log_filter rrc_log;
   srslte::log_filter gtpu_log;
   srslte::log_filter s1ap_log;
+  srslte::log_filter agent_log;
 
   srslte::byte_buffer_pool *pool;
 

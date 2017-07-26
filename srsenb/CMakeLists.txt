@@ -18,6 +18,25 @@
 # and at http://www.gnu.org/licenses/.
 #
 
+########################################################################
+# Options
+########################################################################
+
+option(ENABLE_EMPOWER_AGENT  "Enable the use of EmPOWER Agent"     OFF)
+
+if(ENABLE_EMPOWER_AGENT)
+  message(STATUS "Building srsENB with EmPOWER Agent.")
+  add_definitions(-DHAVE_EMPOWER_AGENT)
+  
+  find_package(Emagent)
+  find_package(Emproto)
+  find_package(Protobuf-c)
+endif(ENABLE_EMPOWER_AGENT)
+
+########################################################################
+# Find dependencies
+########################################################################
+
 find_package(LibConfig REQUIRED)
 find_package(SCTP REQUIRED)
 

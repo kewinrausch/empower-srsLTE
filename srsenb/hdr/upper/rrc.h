@@ -111,6 +111,7 @@ public:
             pdcp_interface_rrc *pdcp,
             s1ap_interface_rrc *s1ap,
             gtpu_interface_rrc *gtpu,
+	    agent_interface_rrc *agent,
             srslte::log *log_rrc);
   
   void stop(); 
@@ -304,6 +305,7 @@ private:
   pdcp_interface_rrc   *pdcp;
   gtpu_interface_rrc   *gtpu;
   s1ap_interface_rrc   *s1ap;
+  agent_interface_rrc  *agent;
   srslte::log          *rrc_log;
 
   typedef struct{

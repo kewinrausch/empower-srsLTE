@@ -1,28 +1,29 @@
-
 add_subdirectory(phy)
 add_subdirectory(mac)
 add_subdirectory(upper)
-
+add_subdirectory(agent)
 
 # Link libstdc++ and libgcc
 if(STATIC_LIB)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
 endif(STATIC_LIB)
 
-
 if (RPATH)
   SET(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif (RPATH)
 
-
 add_executable(srsenb main.cc enb.cc parser.cc enb_cfg_parser.cc metrics_stdout.cc)
-target_link_libraries(srsenb  srsenb_upper
+target_link_libraries(srsenb  srsenb_agent
+                              srsenb_upper
                               srsenb_mac
                               srsenb_phy
                               srslte_common
                               srslte_phy
                               srslte_upper
                               srslte_radio
+                              ${EMPOWER_PROTOCOLS_LIBRARIES}
+                              ${EMPOWER_AGENT_LIBRARIES}
+                              ${PROTOBUF_C_LIBRARIES}
                               ${CMAKE_THREAD_LIBS_INIT} 
                               ${Boost_LIBRARIES} 
                               ${SEC_LIBRARIES}
@@ -42,5 +43,3 @@ if (NOT ${BUILDENB_CMD} STREQUAL "")
 else(NOT ${BUILDENB_CMD} STREQUAL "")
   message(STATUS "No post-build-ENB command defined")
 endif (NOT ${BUILDENB_CMD} STREQUAL "")
-
-install(TARGETS srsenb DESTINATION ${RUNTIME_DIR})

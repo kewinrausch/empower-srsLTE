@@ -28,6 +28,12 @@
 #include <boost/thread/mutex.hpp>
 #include "enb.h"
 
+#ifdef HAVE_EMPOWER_AGENT
+#include "agent/empower_agent.h"
+#else  /* HAVE_EMPOWER_AGENT */
+#include "agent/dummy_agent.h"
+#endif /* HAVE_EMPOWER_AGENT */
+
 namespace srsenb {
 
 enb*          enb::instance = NULL;
@@ -77,12 +83,14 @@ bool enb::init(all_args_t *args_)
     mylog->init(tmp, &logger, true);
     phy_log.push_back((void*) mylog); 
   }
+
   mac_log.init("MAC ", &logger, true);
   rlc_log.init("RLC ", &logger);
   pdcp_log.init("PDCP", &logger);
   rrc_log.init("RRC ", &logger);
   gtpu_log.init("GTPU", &logger);
   s1ap_log.init("S1AP", &logger);
+  agent_log.init("AGNT", &logger);
 
   // Init logs
   logger.log("\n\n");
@@ -96,6 +104,7 @@ bool enb::init(all_args_t *args_)
   rrc_log.set_level(level(args->log.rrc_level));
   gtpu_log.set_level(level(args->log.gtpu_level));
   s1ap_log.set_level(level(args->log.s1ap_level));
+  agent_log.set_level(level(args->log.agent_level));
 
   for (int i=0;i<args->expert.phy.nof_phy_threads;i++) {
     ((srslte::log_filter*) phy_log[i])->set_hex_limit(args->log.phy_hex_limit);
@@ -106,6 +115,7 @@ bool enb::init(all_args_t *args_)
   rrc_log.set_hex_limit(args->log.rrc_hex_limit);
   gtpu_log.set_hex_limit(args->log.gtpu_hex_limit);
   s1ap_log.set_hex_limit(args->log.s1ap_hex_limit);
+  agent_log.set_hex_limit(args->log.agent_hex_limit);
 
   // Set up pcap and trace
   if(args->pcap.enable)
@@ -202,10 +212,11 @@ bool enb::init(all_args_t *args_)
   mac.init(&args->expert.mac, &cell_cfg, &phy, &rlc, &rrc, &mac_log);
   rlc.init(&pdcp, &rrc, &mac, &mac, &rlc_log);
   pdcp.init(&rlc, &rrc, &gtpu, &pdcp_log);
-  rrc.init(&rrc_cfg, &phy, &mac, &rlc, &pdcp, &s1ap, &gtpu, &rrc_log);
+  rrc.init(&rrc_cfg, &phy, &mac, &rlc, &pdcp, &s1ap, &gtpu, &agent, &rrc_log);
   s1ap.init(args->enb.s1ap, &rrc, &s1ap_log);
   gtpu.init(args->enb.s1ap.gtp_bind_addr, args->enb.s1ap.mme_addr, &pdcp, &gtpu_log);
-  
+  agent.init(args->enb.s1ap.enb_id, &radio, &phy, &mac, &rlc, &pdcp, &rrc, &agent_log);
+
   started = true;
   return true;
 }
@@ -227,6 +238,7 @@ void enb::stop()
     pdcp.stop();
     gtpu.stop();
     rrc.stop();
+    agent.stop();
  
     usleep(1e5);
     if(args->pcap.enable)

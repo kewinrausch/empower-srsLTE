@@ -99,20 +99,22 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
 
     ("gui.enable",        bpo::value<bool>(&args->gui.enable)->default_value(false),            "Enable GUI plots")
 
-    ("log.phy_level",     bpo::value<string>(&args->log.phy_level),   "PHY log level")
-    ("log.phy_hex_limit", bpo::value<int>(&args->log.phy_hex_limit),  "PHY log hex dump limit")
-    ("log.mac_level",     bpo::value<string>(&args->log.mac_level),   "MAC log level")
-    ("log.mac_hex_limit", bpo::value<int>(&args->log.mac_hex_limit),  "MAC log hex dump limit")
-    ("log.rlc_level",     bpo::value<string>(&args->log.rlc_level),   "RLC log level")
-    ("log.rlc_hex_limit", bpo::value<int>(&args->log.rlc_hex_limit),  "RLC log hex dump limit")
-    ("log.pdcp_level",    bpo::value<string>(&args->log.pdcp_level),  "PDCP log level")
-    ("log.pdcp_hex_limit",bpo::value<int>(&args->log.pdcp_hex_limit), "PDCP log hex dump limit")
-    ("log.rrc_level",     bpo::value<string>(&args->log.rrc_level),   "RRC log level")
-    ("log.rrc_hex_limit", bpo::value<int>(&args->log.rrc_hex_limit),  "RRC log hex dump limit")
-    ("log.gtpu_level",    bpo::value<string>(&args->log.gtpu_level),  "GTPU log level")
-    ("log.gtpu_hex_limit",bpo::value<int>(&args->log.gtpu_hex_limit), "GTPU log hex dump limit")
-    ("log.s1ap_level",    bpo::value<string>(&args->log.s1ap_level),  "S1AP log level")
-    ("log.s1ap_hex_limit",bpo::value<int>(&args->log.s1ap_hex_limit), "S1AP log hex dump limit")
+    ("log.phy_level",      bpo::value<string>(&args->log.phy_level),     "PHY log level")
+    ("log.phy_hex_limit",  bpo::value<int>(&args->log.phy_hex_limit),    "PHY log hex dump limit")
+    ("log.mac_level",      bpo::value<string>(&args->log.mac_level),     "MAC log level")
+    ("log.mac_hex_limit",  bpo::value<int>(&args->log.mac_hex_limit),    "MAC log hex dump limit")
+    ("log.rlc_level",      bpo::value<string>(&args->log.rlc_level),     "RLC log level")
+    ("log.rlc_hex_limit",  bpo::value<int>(&args->log.rlc_hex_limit),    "RLC log hex dump limit")
+    ("log.pdcp_level",     bpo::value<string>(&args->log.pdcp_level),    "PDCP log level")
+    ("log.pdcp_hex_limit", bpo::value<int>(&args->log.pdcp_hex_limit),   "PDCP log hex dump limit")
+    ("log.rrc_level",      bpo::value<string>(&args->log.rrc_level),     "RRC log level")
+    ("log.rrc_hex_limit",  bpo::value<int>(&args->log.rrc_hex_limit),    "RRC log hex dump limit")
+    ("log.gtpu_level",     bpo::value<string>(&args->log.gtpu_level),    "GTPU log level")
+    ("log.gtpu_hex_limit", bpo::value<int>(&args->log.gtpu_hex_limit),   "GTPU log hex dump limit")
+    ("log.s1ap_level",     bpo::value<string>(&args->log.s1ap_level),    "S1AP log level")
+    ("log.s1ap_hex_limit", bpo::value<int>(&args->log.s1ap_hex_limit),   "S1AP log hex dump limit")
+    ("log.agent_level",    bpo::value<string>(&args->log.agent_level),  "Agent log level")
+    ("log.agent_hex_limit",bpo::value<int>(&args->log.agent_hex_limit), "Agent log hex dump limit")
 
     ("log.all_level",     bpo::value<string>(&args->log.all_level)->default_value("info"),   "ALL log level")
     ("log.all_hex_limit", bpo::value<int>(&args->log.all_hex_limit)->default_value(32),  "ALL log hex dump limit")
@@ -288,6 +290,9 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
     if(!vm.count("log.s1ap_level")) {
       args->log.s1ap_level = args->log.all_level;
     }
+    if(!vm.count("log.agent_level")) {
+      args->log.agent_level = args->log.all_level;
+    }
   }
 
   // Apply all_hex_limit to any unset layers
@@ -312,6 +317,9 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
     }
     if(!vm.count("log.s1ap_hex_limit")) {
       args->log.s1ap_hex_limit = args->log.all_hex_limit;
+    }
+    if(!vm.count("log.agent_hex_limit")) {
+      args->log.agent_hex_limit = args->log.all_hex_limit;
     }
   }
 }

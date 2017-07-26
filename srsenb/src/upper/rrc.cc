@@ -41,6 +41,7 @@ void rrc::init(rrc_cfg_t *cfg_,
                pdcp_interface_rrc* pdcp_, 
                s1ap_interface_rrc *s1ap_,
                gtpu_interface_rrc* gtpu_,
+	       agent_interface_rrc* agent_,
                srslte::log* log_rrc)
 {
   phy     = phy_; 
@@ -49,6 +50,8 @@ void rrc::init(rrc_cfg_t *cfg_,
   pdcp    = pdcp_; 
   gtpu    = gtpu_;
   s1ap    = s1ap_; 
+  agent   = agent_;
+
   rrc_log = log_rrc;
   cnotifier = NULL; 
 
@@ -206,7 +209,9 @@ void rrc::add_user(uint16_t rnti)
     users[rnti].parent = this; 
     users[rnti].rnti   = rnti; 
     rlc->add_user(rnti);
-    pdcp->add_user(rnti);    
+    pdcp->add_user(rnti);
+    agent->add_user(rnti);
+
     rrc_log->info("Added new user rnti=0x%x\n", rnti);
   } else {
     rrc_log->error("Adding user rnti=0x%x (already exists)\n");
@@ -225,9 +230,11 @@ void rrc::rem_user(uint16_t rnti)
     rlc->rem_user(rnti);
     pdcp->rem_user(rnti);
     gtpu->rem_user(rnti);
+    agent->rem_user(rnti);
     users[rnti].sr_free();
     users[rnti].cqi_free();
     users.erase(rnti);
+
     rrc_log->info("Removed user rnti=0x%x\n", rnti);
   } else {
     rrc_log->error("Removing user rnti=0x%x (does not exist)\n", rnti);
