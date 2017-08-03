@@ -98,6 +98,7 @@ class rrc : public rrc_interface_pdcp,
             public rrc_interface_mac, 
             public rrc_interface_rlc,
             public rrc_interface_s1ap,
+	    public rrc_interface_agent,
             public thread
 {
 public:
@@ -140,6 +141,9 @@ public:
   // rrc_interface_pdcp
   void write_pdu(uint16_t rnti, uint32_t lcid, srslte::byte_buffer_t *pdu);
   
+  // rrc_interface_agent
+  void setup_ue_measurement(uint16_t rnti, LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg);
+
   void parse_sibs(); 
   uint32_t get_nof_users();
 
@@ -179,6 +183,7 @@ public:
     void send_connection_reconf(srslte::byte_buffer_t *sdu);
     void send_connection_reconf_new_bearer(LIBLTE_S1AP_E_RABTOBESETUPLISTBEARERSUREQ_STRUCT *e);
     void send_connection_reconf_upd(srslte::byte_buffer_t *pdu); 
+    void send_connection_reconf_meas(LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg);
     void send_security_mode_command();
     void send_ue_cap_enquiry();
     void parse_ul_dcch(uint32_t lcid, srslte::byte_buffer_t* pdu);
@@ -244,6 +249,11 @@ public:
     LIBLTE_S1AP_UEAGGREGATEMAXIMUMBITRATE_STRUCT  bitrates;
     LIBLTE_S1AP_UESECURITYCAPABILITIES_STRUCT     security_capabilities;
     LIBLTE_RRC_UE_EUTRA_CAPABILITY_STRUCT         eutra_capabilities;
+
+    // Measurement status issued to the UE.
+    std::map<uint8_t, uint8_t> meas_ids;   // Meas_Id   --> Object_Id
+    std::map<uint8_t, uint8_t> report_ids; // Report_Id --> Object_Id
+    std::map<uint8_t, LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT> meas_objs;
 
     typedef struct {
       uint8_t                                     id;

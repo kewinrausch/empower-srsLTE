@@ -157,6 +157,8 @@ public:
   void stop();
   void start_plot();
   
+  all_args_t * get_args();
+
   static void rf_msg(srslte_rf_error_t error);
   void handle_rf_msg(srslte_rf_error_t error);
 

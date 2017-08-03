@@ -293,6 +293,19 @@ void rrc::write_pdu(uint16_t rnti, uint32_t lcid, byte_buffer_t* pdu)
 }
 
 /*******************************************************************************
+  Agent interface
+*******************************************************************************/
+
+void rrc::setup_ue_measurement(uint16_t rnti, LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg)
+{
+  if (users.count(rnti) == 1) {
+    users[rnti].send_connection_reconf_meas(msg);
+  } else {
+    rrc_log->error("User %x unknown...\n", rnti);
+  }
+}
+
+/*******************************************************************************
   S1AP interface
 *******************************************************************************/
 void rrc::write_dl_info(uint16_t rnti, byte_buffer_t* sdu)
@@ -820,6 +833,9 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
       handle_ue_cap_info(&ul_dcch_msg.msg.ue_capability_info);
       send_connection_reconf(pdu);
       state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
+      break;
+    case LIBLTE_RRC_UL_DCCH_MSG_TYPE_MEASUREMENT_REPORT:
+      printf("---> User %x received a measurement report\n", rnti);
       break;
     default:
       parent->rrc_log->error("Msg: %s not supported\n", liblte_rrc_ul_dcch_msg_type_text[ul_dcch_msg.msg_type]); 
@@ -1393,6 +1409,35 @@ void rrc::ue::send_connection_reconf_new_bearer(LIBLTE_S1AP_E_RABTOBESETUPLISTBE
   }
 
   send_dl_dcch(&dl_dcch_msg, pdu);
+}
+
+void rrc::ue::send_connection_reconf_meas(LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg)
+{
+  LIBLTE_RRC_CONNECTION_RECONFIGURATION_STRUCT * conn_reconf = 0;
+  LIBLTE_RRC_MEAS_CONFIG_STRUCT * mconf = 0;
+
+  LIBLTE_RRC_DL_DCCH_MSG_STRUCT dl_dcch_msg;
+
+  memset(&dl_dcch_msg, 0, sizeof(LIBLTE_RRC_DL_DCCH_MSG_STRUCT));
+
+  dl_dcch_msg.msg_type = LIBLTE_RRC_DL_DCCH_MSG_TYPE_RRC_CON_RECONFIG;
+  dl_dcch_msg.msg.rrc_con_reconfig.rrc_transaction_id = (transaction_id++)%4;
+
+  conn_reconf = &dl_dcch_msg.msg.rrc_con_reconfig;
+
+  conn_reconf->N_ded_info_nas        = 0;
+  conn_reconf->rr_cnfg_ded_present   = false;
+  conn_reconf->mob_ctrl_info_present = false;
+  conn_reconf->sec_cnfg_ho_present   = false;
+
+  conn_reconf->meas_cnfg_present     = true;
+
+  mconf = &conn_reconf->meas_cnfg;
+  memcpy(mconf, msg, sizeof(LIBLTE_RRC_MEAS_CONFIG_STRUCT));
+
+  parent->rrc_log->info("Sending RRCMeasConfiguration for RNTI:0x%x\n", rnti);
+
+  send_dl_dcch(&dl_dcch_msg);
 }
 
 void rrc::ue::send_security_mode_command()

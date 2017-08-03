@@ -39,6 +39,9 @@
 #include <emage/emproto.h>
 #include <emage/pb/main.pb-c.h>
 
+#include "srslte/asn1/liblte_rrc.h"
+
+#include "enb.h"
 #include "agent/empower_agent.h"
 
 #define EMAGE_BUF_SIZE          4096
@@ -83,14 +86,78 @@ namespace srsenb {
  */
 static empower_agent * em_agent = 0;
 
-static int empower_agent_ue_report (
-  EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
+static int ea_cell_report(EmageMsg * request, EmageMsg ** reply)
 {
-  if(!em_agent) {
-    printf("Agent instance not found!\n");
+  all_args_t * args = enb::get_instance()->get_args();
+
+  emp_eNB enb;
+
+  /* Only consider single events. */
+  if(request->event_types_case != EMAGE_MSG__EVENT_TYPES_SE) {
     return 0;
   }
 
+  /* Support only eNB report message. */
+  if(request->se->menb_cells->req->enb_info_types !=
+    E_NB_CELLS_INFO_TYPES__ENB_CELLS_INFO)
+  {
+    return 0;
+  }
+
+  enb.nof_cells = 1;
+
+  enb.cells[0].pci = args->enb.pci;
+  enb.cells[0].freq= args->rf.dl_earfcn;
+  enb.cells[0].prb_dl = args->enb.n_prb;
+  enb.cells[0].prb_ul = args->enb.n_prb;
+
+  return emp_format_enb_report(
+    em_agent->get_id(),
+    request->head->t_id,
+    &enb,
+    reply);
+}
+
+/* Request an UE current RRC measurement configuration. */
+static int ea_report_RRC_conf(
+	EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
+{
+  all_args_t * args = enb::get_instance()->get_args();
+
+  if(request->event_types_case == EMAGE_MSG__EVENT_TYPES_TE) {
+    emp_format_empty_RRC_conf(
+      em_agent->get_id(), request->head->t_id,
+      request->te->mue_rrc_meas_conf->req->rnti,
+      args->rf.dl_earfcn,
+      reply);
+  }
+
+  return 0;
+}
+
+/* Request an UE to create an RRC measurement report. */
+static int ea_add_RRC_meas(
+	EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
+{
+  if(request->event_types_case == EMAGE_MSG__EVENT_TYPES_TE) {
+    printf("Setting up RRC meas request for %x\n", request->te->mrrc_meas->req->rnti);
+    em_agent->setup_UE_period_meas(
+      request->te->mrrc_meas->req->rnti,
+      request->te->mrrc_meas->req->m_obj->measobj_eutra->carrier_freq,
+      request->te->mrrc_meas->req->r_conf->rc_eutra->has_max_rep_cells ?
+        request->te->mrrc_meas->req->r_conf->rc_eutra->max_rep_cells : 3,
+      1024,
+      1,  //request->te->mrrc_meas->req->measid,
+      1,  //request->te->mrrc_meas->req->m_obj->measobjid,
+      1); //request->te->mrrc_meas->req->r_conf->reportconfid);
+  }
+
+  return 0;
+}
+
+static int ea_ue_report (
+  EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
+{
   em_agent->enable_feature(
     AGENT_FEAT_UE_REPORT, request->head->t_id, trigger_id);
 
@@ -98,15 +165,15 @@ static int empower_agent_ue_report (
 }
 
 static struct em_agent_ops empower_agent_ops = {
-  .init = 0,
-  .release = 0,
-  .handover_request = 0,
-  .UEs_ID_report = empower_agent_ue_report,
-  .RRC_measurements = 0,
-  .RRC_meas_conf = 0,
+  .init                   = 0,
+  .release                = 0,
+  .handover_request       = 0,
+  .UEs_ID_report          = ea_ue_report,
+  .RRC_measurements       = ea_add_RRC_meas,
+  .RRC_meas_conf          = ea_report_RRC_conf,
   .cell_statistics_report = 0,
-  .eNB_cells_report = 0,
-  .ran_sharing_control = 0
+  .eNB_cells_report       = ea_cell_report,
+  .ran_sharing_control    = 0
 };
 
 /******************************************************************************
@@ -157,6 +224,11 @@ int empower_agent::enable_feature(int feature, int module, int trigger)
   }
 }
 
+unsigned int empower_agent::get_id()
+{
+  return m_id;
+}
+
 int empower_agent::init(int            enb_id,
 		       srslte::radio * rf,
 		       srsenb::phy *   phy,
@@ -204,10 +276,89 @@ int empower_agent::init(int            enb_id,
   return 0;
 }
 
-
 void empower_agent::release()
 {
   Info("Agent released\n");
+}
+
+void empower_agent::setup_UE_period_meas(
+  uint16_t rnti, uint16_t freq, uint8_t max_cells, int interval, uint8_t meas_id, uint8_t obj_id, uint8_t rep_id)
+{
+  LIBLTE_RRC_MEAS_CONFIG_STRUCT meas;
+  LIBLTE_RRC_REPORT_INTERVAL_ENUM rep_int;
+
+  bzero(&meas, sizeof(LIBLTE_RRC_MEAS_CONFIG_STRUCT));
+
+  if(interval <= 120) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS120;
+  } else if(interval > 120 && interval <= 240) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS240;
+  } else if(interval > 240 && interval <= 480) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS480;
+  } else if(interval > 480 && interval <= 640) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS640;
+  } else if(interval > 640 && interval <= 1024) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS1024;
+  } else if(interval > 1024 && interval <= 2048) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS2048;
+  } else if(interval > 2048 && interval <= 5120) {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS5120;
+  } else {
+    rep_int = LIBLTE_RRC_REPORT_INTERVAL_MS10240;
+  }
+
+  meas.meas_obj_to_add_mod_list_present = true;
+  meas.rep_cnfg_to_add_mod_list_present = true;
+  meas.meas_id_to_add_mod_list_present  = true;
+  meas.quantity_cnfg_present            = false;
+  meas.meas_gap_cnfg_present            = false;
+  meas.s_meas_present                   = false;
+  meas.pre_reg_info_hrpd_present        = false;
+  meas.speed_state_params_present       = false;
+  meas.N_meas_id_to_remove              = 0;
+  meas.N_meas_obj_to_remove             = 0;
+  meas.N_rep_cnfg_to_remove             = 0;
+
+  // Measurement object:
+
+  meas.meas_obj_to_add_mod_list.N_meas_obj                                         = 1;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_id                       = obj_id;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_type                     = LIBLTE_RRC_MEAS_OBJECT_TYPE_EUTRA;
+
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.offset_freq_not_default            = false;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.presence_ant_port_1                = true;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.cells_to_remove_list_present       = false;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.black_cells_to_remove_list_present = false;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.cell_for_which_to_rep_cgi_present  = false;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.N_black_cells_to_add_mod           = 0;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.N_cells_to_add_mod                 = 0;
+
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.allowed_meas_bw    = LIBLTE_RRC_ALLOWED_MEAS_BANDWIDTH_MBW25;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.offset_freq        = LIBLTE_RRC_Q_OFFSET_RANGE_DB_0;
+  meas.meas_obj_to_add_mod_list.meas_obj_list[0].meas_obj_eutra.carrier_freq       = freq;
+
+  // Measurement report:
+
+  meas.rep_cnfg_to_add_mod_list.N_rep_cnfg                                         = 1;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_id                       = rep_id;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_type                     = LIBLTE_RRC_REPORT_CONFIG_TYPE_EUTRA;
+
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.trigger_type       = LIBLTE_RRC_TRIGGER_TYPE_EUTRA_PERIODICAL;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.trigger_quantity   = LIBLTE_RRC_TRIGGER_QUANTITY_RSRQ;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.periodical.purpose = LIBLTE_RRC_PURPOSE_EUTRA_REPORT_STRONGEST_CELL;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.report_amount      = LIBLTE_RRC_REPORT_AMOUNT_INFINITY;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.report_quantity    = LIBLTE_RRC_REPORT_QUANTITY_BOTH;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.report_interval    = rep_int;
+  meas.rep_cnfg_to_add_mod_list.rep_cnfg_list[0].rep_cnfg_eutra.max_report_cells   = max_cells;
+
+  // Measurement IDs:
+
+  meas.meas_id_to_add_mod_list.N_meas_id                                           = 1;
+  meas.meas_id_to_add_mod_list.meas_id_list[0].meas_id                             = meas_id;
+  meas.meas_id_to_add_mod_list.meas_id_list[0].meas_obj_id                         = obj_id;
+  meas.meas_id_to_add_mod_list.meas_id_list[0].rep_cnfg_id                         = rep_id;
+
+  m_rrc->setup_ue_measurement(rnti, &meas);
 }
 
 /******************************************************************************

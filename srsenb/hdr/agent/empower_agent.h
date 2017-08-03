@@ -66,6 +66,8 @@ public:
 
   int enable_feature(int feature, int module, int trigger);
 
+  unsigned int get_id();
+
   int init(int             enb_id,
            srslte::radio * rf,
            srsenb::phy *   phy,
@@ -77,6 +79,15 @@ public:
 
   /* Release any reserved resource. */
   void release();
+
+  void setup_UE_period_meas(
+    uint16_t rnti,
+    uint16_t freq,
+    uint8_t max_cells,
+    int interval,
+    uint8_t meas_id,
+    uint8_t obj_id,
+    uint8_t rep_id);
 
   /* agent_interface_rrc: */
 

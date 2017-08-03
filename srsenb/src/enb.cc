@@ -298,6 +298,11 @@ void enb::handle_rf_msg(srslte_rf_error_t error)
   }
 }
 
+all_args_t * enb::get_args()
+{
+  return args;
+}
+
 srslte::LOG_LEVEL_ENUM enb::level(std::string l)
 {
   boost::to_upper(l);
