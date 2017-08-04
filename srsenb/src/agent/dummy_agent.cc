@@ -67,5 +67,9 @@ void dummy_agent::rem_user(uint16_t rnti)
   return;
 }
 
+void dummy_agent::report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report)
+{
+  return;
+}
 
 } /* namespace srsenb */

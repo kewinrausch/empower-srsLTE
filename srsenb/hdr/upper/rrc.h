@@ -191,10 +191,11 @@ public:
     void handle_rrc_con_req(LIBLTE_RRC_CONNECTION_REQUEST_STRUCT *msg);
     void handle_rrc_con_reest_req(LIBLTE_RRC_CONNECTION_REESTABLISHMENT_REQUEST_STRUCT *msg); 
     void handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu);
+    void handle_rrc_meas_report(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * msg);
     void handle_security_mode_complete(LIBLTE_RRC_SECURITY_MODE_COMPLETE_STRUCT *msg);
     void handle_security_mode_failure(LIBLTE_RRC_SECURITY_MODE_FAILURE_STRUCT *msg);
     void handle_ue_cap_info(LIBLTE_RRC_UE_CAPABILITY_INFORMATION_STRUCT *msg);
-    
+
     void set_bitrates(LIBLTE_S1AP_UEAGGREGATEMAXIMUMBITRATE_STRUCT *rates);
     void set_security_capabilities(LIBLTE_S1AP_UESECURITYCAPABILITIES_STRUCT *caps);
     void set_security_key(uint8_t* key, uint32_t length);
@@ -214,6 +215,8 @@ public:
     void cqi_get(uint32_t *pmi_idx, uint32_t *n_pucch); 
     int cqi_free(); 
     
+    void meas_free();
+
     void send_dl_ccch(LIBLTE_RRC_DL_CCCH_MSG_STRUCT *dl_ccch_msg);
     void send_dl_dcch(LIBLTE_RRC_DL_DCCH_MSG_STRUCT *dl_dcch_msg, srslte::byte_buffer_t *pdu = NULL);
     
@@ -250,10 +253,10 @@ public:
     LIBLTE_S1AP_UESECURITYCAPABILITIES_STRUCT     security_capabilities;
     LIBLTE_RRC_UE_EUTRA_CAPABILITY_STRUCT         eutra_capabilities;
 
-    // Measurement status issued to the UE.
-    std::map<uint8_t, uint8_t> meas_ids;   // Meas_Id   --> Object_Id
-    std::map<uint8_t, uint8_t> report_ids; // Report_Id --> Object_Id
-    std::map<uint8_t, LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT> meas_objs;
+    // Measurements issued to the UE.
+    std::map<uint8_t, LIBLTE_RRC_MEAS_ID_TO_ADD_MOD_STRUCT *>        meas_ids;
+    std::map<uint8_t, LIBLTE_RRC_REPORT_CONFIG_TO_ADD_MOD_STRUCT *>  meas_reps;
+    std::map<uint8_t, LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT *>    meas_objs;
 
     typedef struct {
       uint8_t                                     id;

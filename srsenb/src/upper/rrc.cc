@@ -233,6 +233,7 @@ void rrc::rem_user(uint16_t rnti)
     agent->rem_user(rnti);
     users[rnti].sr_free();
     users[rnti].cqi_free();
+    users[rnti].meas_free();
     users.erase(rnti);
 
     rrc_log->info("Removed user rnti=0x%x\n", rnti);
@@ -835,7 +836,7 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
       state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
       break;
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_MEASUREMENT_REPORT:
-      printf("---> User %x received a measurement report\n", rnti);
+      handle_rrc_meas_report(&ul_dcch_msg.msg.measurement_report);
       break;
     default:
       parent->rrc_log->error("Msg: %s not supported\n", liblte_rrc_ul_dcch_msg_type_text[ul_dcch_msg.msg_type]); 
@@ -879,6 +880,11 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
     parent->s1ap->initial_ue(rnti, pdu);
   }
   state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
+}
+
+void rrc::ue::handle_rrc_meas_report(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * msg)
+{
+  parent->agent->report_RRC_measure(rnti, msg);
 }
 
 void rrc::ue::handle_security_mode_complete(LIBLTE_RRC_SECURITY_MODE_COMPLETE_STRUCT *msg)
@@ -1418,6 +1424,9 @@ void rrc::ue::send_connection_reconf_meas(LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg)
 
   LIBLTE_RRC_DL_DCCH_MSG_STRUCT dl_dcch_msg;
 
+  unsigned int i;
+  uint8_t id;
+
   memset(&dl_dcch_msg, 0, sizeof(LIBLTE_RRC_DL_DCCH_MSG_STRUCT));
 
   dl_dcch_msg.msg_type = LIBLTE_RRC_DL_DCCH_MSG_TYPE_RRC_CON_RECONFIG;
@@ -1435,9 +1444,65 @@ void rrc::ue::send_connection_reconf_meas(LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg)
   mconf = &conn_reconf->meas_cnfg;
   memcpy(mconf, msg, sizeof(LIBLTE_RRC_MEAS_CONFIG_STRUCT));
 
+  // Save sent measurement ids.
+  for(i = 0; i < mconf->meas_id_to_add_mod_list.N_meas_id; i++) {
+    id = mconf->meas_id_to_add_mod_list.meas_id_list[i].meas_id;
+
+    if(meas_ids.count(id) == 0) {
+      meas_ids[id] = (LIBLTE_RRC_MEAS_ID_TO_ADD_MOD_STRUCT *)malloc(sizeof(LIBLTE_RRC_MEAS_ID_TO_ADD_MOD_STRUCT));
+
+      if(!meas_ids[id]) {
+        parent->rrc_log->error("No more memory while allocating Measurement IDs\n");
+        return;
+      }
+
+      memcpy(meas_ids[id], &mconf->meas_id_to_add_mod_list.meas_id_list[i], sizeof(LIBLTE_RRC_MEAS_ID_TO_ADD_MOD_STRUCT));
+    } else {
+      parent->rrc_log->error("Measurement ID %d already in use\n", id);
+    }
+  }
+
+  // Save sent measurement objects.
+  for(i = 0; i < mconf->meas_obj_to_add_mod_list.N_meas_obj; i++) {
+    id = mconf->meas_obj_to_add_mod_list.meas_obj_list[i].meas_obj_id;
+
+    if(meas_objs.count(id) == 0) {
+      meas_objs[id] = (LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT *)malloc(sizeof(LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT));
+
+      if(!meas_objs[id]) {
+        parent->rrc_log->error("No more memory while allocating Measurement Objects\n");
+        return;
+      }
+
+      memcpy(meas_objs[id], &mconf->meas_obj_to_add_mod_list.meas_obj_list[i], sizeof(LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT));
+    } else {
+      parent->rrc_log->error("Measurement Object %d already in use\n", id);
+    }
+  }
+
+  // Save sent measurement reports.
+  for(i = 0; i < mconf->rep_cnfg_to_add_mod_list.N_rep_cnfg; i++) {
+    id = mconf->rep_cnfg_to_add_mod_list.rep_cnfg_list[i].rep_cnfg_id;
+
+    if(meas_reps.count(id) == 0) {
+      meas_reps[id] = (LIBLTE_RRC_REPORT_CONFIG_TO_ADD_MOD_STRUCT *)malloc(sizeof(LIBLTE_RRC_REPORT_CONFIG_TO_ADD_MOD_STRUCT));
+
+      if(!meas_reps[id]) {
+        parent->rrc_log->error("No more memory while allocating Measurement Reports\n");
+        return;
+      }
+
+      memcpy(meas_reps[id], &mconf->rep_cnfg_to_add_mod_list.rep_cnfg_list[i], sizeof(LIBLTE_RRC_REPORT_CONFIG_TO_ADD_MOD_STRUCT));
+    } else {
+      parent->rrc_log->error("Measurement Report %d already in use\n", id);
+    }
+  }
+
   parent->rrc_log->info("Sending RRCMeasConfiguration for RNTI:0x%x\n", rnti);
 
   send_dl_dcch(&dl_dcch_msg);
+
+  return;
 }
 
 void rrc::ue::send_security_mode_command()
@@ -1592,6 +1657,23 @@ int rrc::ue::sr_allocate(uint32_t period, uint32_t *I_sr, uint32_t *N_pucch_sr)
   return 0; 
 }
 
+void rrc::ue::meas_free()
+{
+  for (std::map<uint8_t, LIBLTE_RRC_MEAS_ID_TO_ADD_MOD_STRUCT *>::iterator it = meas_ids.begin(); it != meas_ids.end(); ++it)
+  {
+    free(it->second);
+  }
+
+  for (std::map<uint8_t, LIBLTE_RRC_REPORT_CONFIG_TO_ADD_MOD_STRUCT *>::iterator it = meas_reps.begin(); it != meas_reps.end(); ++it)
+  {
+    free(it->second);
+  }
+
+  for (std::map<uint8_t, LIBLTE_RRC_MEAS_OBJECT_TO_ADD_MOD_STRUCT *>::iterator it = meas_objs.begin(); it != meas_objs.end(); ++it)
+  {
+    free(it->second);
+  }
+}
 
 int rrc::ue::cqi_free()
 {

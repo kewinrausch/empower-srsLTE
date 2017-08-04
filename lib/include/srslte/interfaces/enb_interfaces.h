@@ -276,6 +276,8 @@ class agent_interface_rrc
 public:
   virtual void add_user(uint16_t rnti) = 0;
   virtual void rem_user(uint16_t rnti) = 0;
+
+  virtual void report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report) = 0;
 };
 
 }

@@ -41,6 +41,9 @@
 
 namespace srsenb {
 
+#define EMPOWER_AGENT_MAX_MEAS		32
+#define EMPOWER_AGENT_MAX_CELL_MEAS	8
+
 /* State of the agent thread. */
 enum agent_state {
   /* Agent processing paused. */
@@ -82,17 +85,21 @@ public:
 
   void setup_UE_period_meas(
     uint16_t rnti,
+    uint32_t mod_id,
     uint16_t freq,
-    uint8_t max_cells,
-    int interval,
-    uint8_t meas_id,
-    uint8_t obj_id,
-    uint8_t rep_id);
+    uint8_t  max_cells,
+    int      interval,
+    uint8_t  meas_id,
+    uint8_t  obj_id,
+    uint8_t  rep_id);
 
   /* agent_interface_rrc: */
 
   void add_user(uint16_t rnti);
   void rem_user(uint16_t rnti);
+
+  void report_RRC_measure(
+    uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);
 
   /* Thread: */
 
@@ -102,9 +109,27 @@ private:
 
   class em_ue {
   public:
+    typedef struct {
+      uint16_t pci;
+      uint8_t  rsrp;
+      uint8_t  rsrq;
+    }ue_cell_meas;
+
+    typedef struct {
+      uint32_t mod_id;
+
+      ue_cell_meas carrier;
+      int c_dirty;
+
+      ue_cell_meas neigh[EMPOWER_AGENT_MAX_CELL_MEAS];
+      int n_dirty[EMPOWER_AGENT_MAX_CELL_MEAS];
+    }ue_meas;
+
     uint64_t imsi;
     uint32_t plmn;
-  };
+
+    ue_meas  meas[EMPOWER_AGENT_MAX_MEAS];
+  }; /* class em_ue */
 
   unsigned int    m_id;
 
@@ -129,12 +154,19 @@ private:
   pthread_spinlock_t m_lock;
   int             m_state;
 
+  /* Utilities */
+
+  void measure_check();
+
   /* Thread: */
+
   static void * agent_loop(void * args);
 
   /* Interaction with controller: */
 
   void send_UE_report(void);
+  void send_UE_meas(uint16_t rnti, int m);
+
 };
 
 } /* namespace srsenb */
