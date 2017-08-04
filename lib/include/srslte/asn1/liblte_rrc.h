@@ -1749,10 +1749,41 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_object_utra_ie(uint8                   
     Document Reference: 36.331 v10.0.0 Section 6.3.5
 *********************************************************************/
 // Defines
+#define LIBLTE_RRC_MAX_NEIGH_CELLS_EUTRA	8
 // Enums
+typedef enum  {
+	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_EUTRA,
+	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_UTRA,
+	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_GERAN,
+	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_CDMA2000,
+	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_N_ITEMS
+}LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM;
 // Structs
+typedef struct {
+    uint16 pci;
+    uint8  rsrp_range;
+    uint8  rsrq_range;
+    bool   rsrp_present;
+    bool   rsrq_present;
+    bool   cgi_info_present;
+}LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT;
+typedef struct {
+    uint8 rsrp_range;
+    uint8 rsrq_range;
+}LIBLTE_RRC_MEAS_RESULT_PCELL_STRUCT;
+typedef struct {
+    uint8                                   meas_id;
+    LIBLTE_RRC_MEAS_RESULT_PCELL_STRUCT     meas_result_pcell;
+    LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM neigh_cells_type;
+    uint32                                  n_of_neigh_cells;
+    LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT     neigh_cells_EUTRA[LIBLTE_RRC_MAX_NEIGH_CELLS_EUTRA];
+    bool                                    meas_results_neigh_cells_present;
+}LIBLTE_RRC_MEAS_RESULTS_STRUCT;
 // Functions
-// FIXME
+LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_msg(LIBLTE_RRC_MEAS_RESULTS_STRUCT *meas_result,
+                                                  LIBLTE_BIT_MSG_STRUCT          *msg);
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_msg(uint8                         **ie_ptr,
+                                                   LIBLTE_RRC_MEAS_RESULTS_STRUCT *meas_result);
 
 /*********************************************************************
     IE Name: Quantity Config
@@ -6437,15 +6468,28 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_mobility_from_eutra_command_msg(LIBLTE_BIT_M
 *********************************************************************/
 // Defines
 // Enums
+typedef enum {
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_R8,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE7,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE6,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE5,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE4,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE3,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE2,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE1,
+	LIBLTE_RRC_MEASUREMENT_REPORT_C1_N_ITEMS,
+}LIBLTE_RRC_MEASUREMENT_REPORT_C1_ENUM;
 // Structs
 typedef struct{
-    // FIXME
+    LIBLTE_RRC_MEAS_RESULTS_STRUCT        meas_results;
+    LIBLTE_RRC_MEASUREMENT_REPORT_C1_ENUM meas_result_type;
+    bool                                  non_crit_ext_present;
 }LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT;
 // Functions
-LIBLTE_ERROR_ENUM liblte_rrc_pack_measurement_report_msg(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report,
-                                                         LIBLTE_BIT_MSG_STRUCT                *msg);
-LIBLTE_ERROR_ENUM liblte_rrc_unpack_measurement_report_msg(LIBLTE_BIT_MSG_STRUCT                *msg,
-                                                           LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report);
+LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_report_msg(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report,
+                                                  LIBLTE_BIT_MSG_STRUCT                *msg);
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_report_msg(LIBLTE_BIT_MSG_STRUCT                *msg,
+                                                    LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report);
 
 /*********************************************************************
     Message Name: MBSFN Area Configuration
