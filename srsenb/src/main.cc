@@ -132,7 +132,7 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
         bpo::value<int>(&args->expert.mac.sched.pusch_mcs)->default_value(-1),
         "Optional fixed PUSCH MCS (ignores reported CQIs if specified)")
     ("scheduler.pusch_max_mcs",
-        bpo::value<int>(&args->expert.mac.sched.pusch_max_mcs)->default_value(16),
+        bpo::value<int>(&args->expert.mac.sched.pusch_max_mcs)->default_value(-1),
         "Optional PUSCH MCS limit")
     ("scheduler.nof_ctrl_symbols",
         bpo::value<int>(&args->expert.mac.sched.nof_ctrl_symbols)->default_value(3),
@@ -154,7 +154,7 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
         "Maximum number of turbo decoder iterations")
 
     ("expert.tx_amplitude",
-        bpo::value<float>(&args->expert.phy.tx_amplitude)->default_value(0.8),
+        bpo::value<float>(&args->expert.phy.tx_amplitude)->default_value(0.6),
         "Transmit amplitude factor")
 
     ("expert.nof_phy_threads",
@@ -178,7 +178,7 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
         "Chooses the coefficients for the 3-tap channel estimator centered filter.")
 
     ("expert.rrc_inactivity_timer",
-        bpo::value<uint32_t>(&args->expert.rrc_inactivity_timer)->default_value(30000),
+        bpo::value<uint32_t>(&args->expert.rrc_inactivity_timer)->default_value(10000),
         "Inactivity timer in ms")
 
 
@@ -381,6 +381,7 @@ int main(int argc, char *argv[])
   pthread_cancel(input);
   metrics.stop();
   enb->stop();
+  enb->cleanup();
   cout << "---  exiting  ---" << endl;
   exit(0);
 }
