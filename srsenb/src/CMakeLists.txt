@@ -21,9 +21,6 @@ target_link_libraries(srsenb  srsenb_agent
                               srslte_phy
                               srslte_upper
                               srslte_radio
-                              ${EMPOWER_PROTOCOLS_LIBRARIES}
-                              ${EMPOWER_AGENT_LIBRARIES}
-                              ${PROTOBUF_C_LIBRARIES}
                               ${CMAKE_THREAD_LIBS_INIT} 
                               ${Boost_LIBRARIES} 
                               ${SEC_LIBRARIES}

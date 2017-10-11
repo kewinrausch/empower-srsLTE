@@ -37,42 +37,41 @@
 #include <boost/thread/mutex.hpp>
 #include <emage/emage.h>
 #include <emage/emproto.h>
-#include <emage/pb/main.pb-c.h>
 
 #include "srslte/asn1/liblte_rrc.h"
 
 #include "enb.h"
 #include "agent/empower_agent.h"
 
-#define EMAGE_BUF_SIZE          4096
+#define EMAGE_BUF_SMALL_SIZE    2048
 #define EMAGE_REPORT_MAX_UES    32
 
-#define Error(fmt, ...)                     \
-  do {                                      \
-    m_logger->error_line(		    \
-    __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);             \
+#define Error(fmt, ...)                       \
+  do {                                        \
+    m_logger->error_line(                     \
+      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
-#define Warning(fmt, ...)                   \
-  do {                                      \
-    m_logger->warning_line(		    \
-    __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);             \
+#define Warning(fmt, ...)                     \
+  do {                                        \
+    m_logger->warning_line(                   \
+      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
-#define Info(fmt, ...)                      \
-  do {                                      \
-    m_logger->info_line(		    \
-    __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);             \
+#define Info(fmt, ...)                        \
+  do {                                        \
+    m_logger->info_line(                      \
+      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
-#define Debug(fmt, ...)                     \
-  do {                                      \
-    m_logger->debug_line(		    \
-    __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);             \
+#define Debug(fmt, ...)                       \
+  do {                                        \
+    m_logger->debug_line(                     \
+      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
 #define RSRP_RANGE_TO_VALUE(x)	((float)x - 140.0f)
@@ -89,93 +88,47 @@ namespace srsenb {
  */
 static empower_agent * em_agent = 0;
 
-static int ea_cell_report(EmageMsg * request, EmageMsg ** reply)
+static int ea_enb_setup(void)
 {
+  char        buf[EMAGE_BUF_SMALL_SIZE] = {0};
+  ep_cell_det cells[1];
+  int         blen                      = 0;
+
   all_args_t * args = enb::get_instance()->get_args();
 
-  emp_eNB enb;
+  cells[0].cap       = EP_CCAP_NOTHING;
+  cells[0].pci       = (uint16_t)args->enb.pci;
+  cells[0].DL_earfcn = (uint16_t)args->rf.dl_earfcn;
+  cells[0].UL_earfcn = (uint16_t)args->rf.ul_earfcn;
+  cells[0].DL_prbs   = (uint8_t) args->enb.n_prb;
+  cells[0].UL_prbs   = (uint8_t) args->enb.n_prb;
 
-  /* Only consider single events. */
-  if(request->event_types_case != EMAGE_MSG__EVENT_TYPES_SE) {
-    return 0;
-  }
-
-  /* Support only eNB report message. */
-  if(request->se->menb_cells->req->enb_info_types !=
-    E_NB_CELLS_INFO_TYPES__ENB_CELLS_INFO)
-  {
-    return 0;
-  }
-
-  enb.nof_cells = 1;
-
-  enb.cells[0].pci = args->enb.pci;
-  enb.cells[0].freq= args->rf.dl_earfcn;
-  enb.cells[0].prb_dl = args->enb.n_prb;
-  enb.cells[0].prb_ul = args->enb.n_prb;
-
-  return emp_format_enb_report(
+  blen = epf_single_ecap_rep(
+    buf, EMAGE_BUF_SMALL_SIZE,
     em_agent->get_id(),
-    request->head->t_id,
-    &enb,
-    reply);
-}
+    0,
+    0,
+    EP_ECAP_UE_REPORT,
+    cells,
+    1);
 
-/* Request an UE current RRC measurement configuration. */
-static int ea_report_RRC_conf(
-	EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
-{
-  all_args_t * args = enb::get_instance()->get_args();
-
-  if(request->event_types_case == EMAGE_MSG__EVENT_TYPES_TE) {
-    emp_format_empty_RRC_conf(
-      em_agent->get_id(), request->head->t_id,
-      request->te->mue_rrc_meas_conf->req->rnti,
-      args->rf.dl_earfcn,
-      reply);
+  if(blen < 0) {
+    return -1;
   }
 
-  return 0;
+  return em_send(em_agent->get_id(), buf, blen);
 }
 
-/* Request an UE to create an RRC measurement report. */
-static int ea_add_RRC_meas(
-	EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
+static int ea_ue_report(unsigned int mod, int trig_id, int trig_type)
 {
-  if(request->event_types_case == EMAGE_MSG__EVENT_TYPES_TE) {
-    em_agent->setup_UE_period_meas(
-      request->te->mrrc_meas->req->rnti,
-      request->head->t_id,
-      request->te->mrrc_meas->req->m_obj->measobj_eutra->carrier_freq,
-      request->te->mrrc_meas->req->r_conf->rc_eutra->max_rep_cells,
-      1024,
-      1, //request->te->mrrc_meas->req->measid,
-      1, //request->te->mrrc_meas->req->m_obj->measobjid,
-      1);//request->te->mrrc_meas->req->r_conf->reportconfid);
-  }
-
-  return 0;
-}
-
-static int ea_ue_report (
-  EmageMsg * request, EmageMsg ** reply, unsigned int trigger_id)
-{
-  em_agent->enable_feature(
-    AGENT_FEAT_UE_REPORT, request->head->t_id, trigger_id);
-
-  return 0;
+  return em_agent->enable_feature(AGENT_FEAT_UE_REPORT, mod, trig_id);
 }
 
 static struct em_agent_ops empower_agent_ops = {
   .init                   = 0,
   .release                = 0,
-  .handover_request       = 0,
-  .UEs_ID_report          = ea_ue_report,
-  .RRC_measurements       = ea_add_RRC_meas,
-  .RRC_meas_conf          = ea_report_RRC_conf,
-  .cell_statistics_report = 0,
-  .eNB_cells_report       = ea_cell_report,
-  .ran_sharing_control    = 0
+  .enb_setup_request      = ea_enb_setup,
+  .ue_report              = ea_ue_report,
 };
 
 /******************************************************************************
@@ -195,8 +148,10 @@ empower_agent::empower_agent()
   m_rrc      = 0;
   m_logger   = 0;
 
-  m_mod_ue   = 0;
-  m_feat_ue  = 0;
+  m_uer_mod  = 0;
+  m_uer_feat = 0;
+  m_uer_tr   = 0;
+
   m_ues_dirty= 0;
   m_nof_ues  = 0;
 
@@ -218,8 +173,9 @@ int empower_agent::enable_feature(int feature, int module, int trigger)
   switch(feature){
   case AGENT_FEAT_UE_REPORT:
     Debug("Enabling UE report agent feature, trigger=%d\n", trigger);
-    m_mod_ue  = module;
-    m_feat_ue = trigger;
+    m_uer_mod  = module;
+    m_uer_tr   = trigger;
+    m_uer_feat = 1;
     return 0;
   default:
     return -1;
@@ -231,14 +187,15 @@ unsigned int empower_agent::get_id()
   return m_id;
 }
 
-int empower_agent::init(int            enb_id,
-		       srslte::radio * rf,
-		       srsenb::phy *   phy,
-		       srsenb::mac *   mac,
-		       srsenb::rlc *   rlc,
-		       srsenb::pdcp *  pdcp,
-		       srsenb::rrc *   rrc,
-		       srslte::log *   logger)
+int empower_agent::init(
+  int             enb_id,
+  srslte::radio * rf,
+  srsenb::phy *   phy,
+  srsenb::mac *   mac,
+  srsenb::rlc *   rlc,
+  srsenb::pdcp *  pdcp,
+  srsenb::rrc *   rrc,
+  srslte::log *   logger)
 {
   if(!rf || !phy || !mac || !rlc || !pdcp || !rrc || !logger) {
     return -EINVAL;
@@ -390,6 +347,8 @@ void empower_agent::add_user(uint16_t rnti)
 {
   std::map<uint16_t, em_ue *>::iterator it;
 
+  all_args_t *  args = enb::get_instance()->get_args();
+
   pthread_spin_lock(&m_lock);
 
   it = m_ues.find(rnti);
@@ -399,9 +358,12 @@ void empower_agent::add_user(uint16_t rnti)
     m_nof_ues++;
 
     m_ues[rnti]->imsi = 0;
-    m_ues[rnti]->plmn = 0x222f93; /* This need to be retrieved somehow... */
+    m_ues[rnti]->plmn  = (args->enb.s1ap.mcc & 0x0fff) << 12;
+    m_ues[rnti]->plmn |= (args->enb.s1ap.mnc & 0x0fff);
 
-    m_ues_dirty = 1;
+    if(m_uer_feat) {
+      m_ues_dirty = 1;
+    }
   }
 
   pthread_spin_unlock(&m_lock);
@@ -422,7 +384,9 @@ void empower_agent::rem_user(uint16_t rnti)
     m_nof_ues--;
     m_ues.erase(it);
 
-    m_ues_dirty = 1;
+    if(m_uer_feat) {
+      m_ues_dirty = 1;
+    }
 
     delete it->second;
   }
@@ -458,15 +422,10 @@ void empower_agent::report_RRC_measure(
     cells = report->meas_results.neigh_cells_EUTRA;
 
     for(i = 0; i < nof_cells && nof_cells < EMPOWER_AGENT_MAX_CELL_MEAS; i++) {
-      m_ues[rnti]->meas[report->meas_results.meas_id].neigh[i].pci =
-        cells[i].pci;
-
-      m_ues[rnti]->meas[report->meas_results.meas_id].neigh[i].rsrp =
-        cells[i].rsrp_range;
-      m_ues[rnti]->meas[report->meas_results.meas_id].neigh[i].rsrq =
-        cells[i].rsrq_range;
-
-      m_ues[rnti]->meas[report->meas_results.meas_id].n_dirty[i] = 1;
+      m_ues[rnti]->meas[report->meas_results.meas_id].neigh[i].pci =  cells[i].pci;
+      m_ues[rnti]->meas[report->meas_results.meas_id].neigh[i].rsrp = cells[i].rsrp_range;
+      m_ues[rnti]->meas[report->meas_results.meas_id].neigh[i].rsrq = cells[i].rsrq_range;
+      m_ues[rnti]->meas[report->meas_results.meas_id].n_dirty[i]    = 1;
     }
   }
 }
@@ -477,68 +436,60 @@ void empower_agent::report_RRC_measure(
 
 void empower_agent::send_UE_report(void)
 {
-  int i = 0;
   std::map<uint16_t, em_ue *>::iterator it;
 
-  EmageMsg * msg = 0;
+  int           i;
+  char          buf[EMAGE_BUF_SMALL_SIZE];
+  int           size;
+  ep_ue_details ued[16];
 
-  unsigned int nof_a = 0;
-  emp_UE act[EMAGE_REPORT_MAX_UES] = {0};
+  all_args_t *  args = enb::get_instance()->get_args();
 
   pthread_spin_lock(&m_lock);
 
-  nof_a = m_nof_ues;
-
-  for(it = m_ues.begin(); it != m_ues.end(); ++it, i++)
+  for(i = 0, it = m_ues.begin(); it != m_ues.end(); ++it, i++)
   {
-    act[i].rnti = it->first;
-    act[i].plmn = it->second->plmn;
-    act[i].imsi = it->second->imsi;
+    ued[i].pci  = (uint16_t)args->enb.pci;
+    ued[i].rnti = it->first;
+    ued[i].plmn = it->second->plmn;
+    ued[i].imsi = it->second->imsi;
   }
 
   pthread_spin_unlock(&m_lock);
 
-  if(emp_format_UE_report(m_id, m_mod_ue, act, nof_a, 0, 0, &msg)) {
-    Error("Error formatting UE report message!\n");
+  size = epf_trigger_uerep_rep(
+    buf, EMAGE_BUF_SMALL_SIZE,
+    m_id,
+    (uint16_t)args->enb.pci,
+    m_uer_mod,
+    i,
+    ued);
+
+  if(size < 0) {
+    Error("Cannot format UE report reply\n");
     return;
   }
 
-  em_send(m_id, msg);
-}
-
-void empower_agent::send_UE_meas(uint16_t rnti, int m)
-{
-  EmageMsg * msg  = 0;
-  emp_UERM   uerm = {0};
-
-  int i;
-
-  uerm.id   = m;
-  uerm.rsrp = RSRP_RANGE_TO_VALUE(m_ues[rnti]->meas[m].carrier.rsrp);
-  uerm.rsrq = RSRQ_RANGE_TO_VALUE(m_ues[rnti]->meas[m].carrier.rsrq);
-
-  for(i = 0; i < EMPOWER_AGENT_MAX_CELL_MEAS; i++) {
-    if(m_ues[rnti]->meas[m].n_dirty[i]) {
-      uerm.neighs[uerm.nof_neigh].pci = m_ues[rnti]->meas[m].neigh[i].pci;
-      uerm.neighs[uerm.nof_neigh].rsrp =
-        RSRP_RANGE_TO_VALUE(m_ues[rnti]->meas[m].neigh[i].rsrp);
-      uerm.neighs[uerm.nof_neigh].rsrq =
-        RSRQ_RANGE_TO_VALUE(m_ues[rnti]->meas[m].neigh[i].rsrq);
-
-      uerm.nof_neigh++;
-      m_ues[rnti]->meas[m].n_dirty[i] = 0;
-    }
-  }
-
-  m_ues[rnti]->meas[m].c_dirty = 0;
-
-  emp_format_UE_RRC_meas(m_id, m_ues[rnti]->meas[m].mod_id, rnti, &uerm, &msg);
-  em_send(m_id, msg);
+  em_send(m_id, buf, size);
 }
 
 /******************************************************************************
  * Private utilities.                                                         *
  ******************************************************************************/
+
+void empower_agent::dirty_ue_check()
+{
+  /* Check if trigger is still there */
+  if(!em_has_trigger(m_id, m_uer_tr, EM_TRIGGER_UE_REPORT)) {
+    m_uer_feat = 0;
+    return;
+  }
+
+  if(m_ues_dirty) {
+    send_UE_report();
+    m_ues_dirty = 0;
+  }
+}
 
 void empower_agent::measure_check()
 {
@@ -548,7 +499,7 @@ void empower_agent::measure_check()
   for (it = m_ues.begin(); it != m_ues.end(); ++it) {
     for(i = 0; i < EMPOWER_AGENT_MAX_MEAS; i++) {
       if(it->second->meas[i].c_dirty) {
-        send_UE_meas(it->first, i);
+        //send_UE_meas(it->first, i);
       }
     }
   }
@@ -560,20 +511,25 @@ void empower_agent::measure_check()
 
 void * empower_agent::agent_loop(void * args)
 {
-  empower_agent * a = (empower_agent *)args;
+  all_args_t *    enb_args = enb::get_instance()->get_args();
+  empower_agent * a        = (empower_agent *)args;
 
   int i;
 
-  if(em_start(&empower_agent_ops, a->m_id)) {
+  if(em_start(
+    a->m_id,
+    &empower_agent_ops,
+    (char *)enb_args->enb.ctrl_addr.c_str(),
+    enb_args->enb.ctrl_port)) {
+
     return 0;
   }
 
   a->m_state = AGENT_STATE_STARTED;
 
   while(a->m_state != AGENT_STATE_STOPPED) {
-    if(a->m_ues_dirty) {
-      a->send_UE_report();
-      a->m_ues_dirty = 0;
+    if(a->m_uer_feat) {
+      a->dirty_ue_check();
     }
 
     a->measure_check();

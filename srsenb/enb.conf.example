@@ -13,6 +13,8 @@
 # mme_addr:       IP address of MME for S1 connnection
 # gtp_bind_addr:  Local IP address to bind for GTP connection
 # n_prb:          Number of Physical Resource Blocks (6,15,25,50,75,100)
+# ctrl_addr       IP address of eNB Controller
+# ctrl_port       TCP port used to connect to the Controller
 #
 #####################################################################
 [enb]
@@ -25,6 +27,8 @@ mnc = 01
 mme_addr = 127.0.1.100
 gtp_bind_addr = 127.0.1.1
 n_prb = 25
+#ctrl_addr = 127.0.0.1
+#ctrl_port = 2210
 
 #####################################################################
 # eNB configuration files 

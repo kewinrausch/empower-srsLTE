@@ -71,13 +71,15 @@ namespace srsenb {
 typedef struct {
   s1ap_args_t s1ap; 
   uint32_t    n_prb; 
-  uint32_t    pci; 
+  uint32_t    pci;
+  std::string ctrl_addr;
+  uint16_t    ctrl_port;
 }enb_args_t;
 
 typedef struct {
   std::string sib_config;
   std::string rr_config; 
-  std::string drb_config; 
+  std::string drb_config;
 } enb_files_t; 
 
 typedef struct {
@@ -205,6 +207,7 @@ private:
   srslte::log_filter  rrc_log;
   srslte::log_filter  gtpu_log;
   srslte::log_filter  s1ap_log;
+  srslte::log_filter  agent_log;
 
   srslte::byte_buffer_pool *pool;
 

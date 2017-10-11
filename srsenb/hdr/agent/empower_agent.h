@@ -41,8 +41,8 @@
 
 namespace srsenb {
 
-#define EMPOWER_AGENT_MAX_MEAS		32
-#define EMPOWER_AGENT_MAX_CELL_MEAS	8
+#define EMPOWER_AGENT_MAX_MEAS          32
+#define EMPOWER_AGENT_MAX_CELL_MEAS     8
 
 /* State of the agent thread. */
 enum agent_state {
@@ -131,31 +131,33 @@ private:
     ue_meas  meas[EMPOWER_AGENT_MAX_MEAS];
   }; /* class em_ue */
 
-  unsigned int    m_id;
+  unsigned int       m_id;
 
-  srslte::radio * m_rf;
-  srsenb::phy *   m_phy;
-  srsenb::mac *   m_mac;
-  srsenb::rlc *   m_rlc;
-  srsenb::pdcp *  m_pdcp;
-  srsenb::rrc *   m_rrc;
-  srslte::log *   m_logger;
+  srslte::radio *    m_rf;
+  srsenb::phy *      m_phy;
+  srsenb::mac *      m_mac;
+  srsenb::rlc *      m_rlc;
+  srsenb::pdcp *     m_pdcp;
+  srsenb::rrc *      m_rrc;
+  srslte::log *      m_logger;
 
-  int             m_feat_ue;
-  unsigned int    m_mod_ue;
+  int                m_uer_feat;
+  int                m_uer_tr;
+  unsigned int       m_uer_mod;
 
-  int             m_nof_ues;
+  int                m_nof_ues;
   std::map<uint16_t, em_ue *> m_ues;
-  int             m_ues_dirty;
+  int                m_ues_dirty;
 
   /* Thread: */
 
-  pthread_t       m_thread;
+  pthread_t          m_thread;
   pthread_spinlock_t m_lock;
-  int             m_state;
+  int                m_state;
 
   /* Utilities */
 
+  void dirty_ue_check();
   void measure_check();
 
   /* Thread: */

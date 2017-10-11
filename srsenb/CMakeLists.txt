@@ -30,7 +30,6 @@ if(ENABLE_EMPOWER_AGENT)
   
   find_package(Emagent)
   find_package(Emproto)
-  find_package(Protobuf-c)
 endif(ENABLE_EMPOWER_AGENT)
 
 ########################################################################
@@ -53,6 +52,8 @@ endif()
 ########################################################################
 include_directories(
     ${Boost_INCLUDE_DIRS}
+    ${EMPOWER_AGENT_INCLUDE_DIRS}
+    ${EMPOWER_PROTOCOLS_INCLUDE_DIRS}
     ${SEC_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/srsenb/hdr
 )

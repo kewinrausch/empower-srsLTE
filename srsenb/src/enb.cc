@@ -100,7 +100,7 @@ bool enb::init(all_args_t *args_)
   rrc_log.init("RRC ", logger);
   gtpu_log.init("GTPU", logger);
   s1ap_log.init("S1AP", logger);
-  agent_log.init("AGNT", &logger);
+  agent_log.init("AGNT", logger);
 
   // Init logs
   rf_log.set_level(srslte::LOG_LEVEL_INFO);
