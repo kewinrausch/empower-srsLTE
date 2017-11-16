@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
   cell_cfg.sibs[1].period_rf = 16;
   cell_cfg.si_window_ms = 40;
   
-  my_sched.init(NULL, &log_out);
+  my_sched.init(NULL, NULL, &log_out);
   my_sched.set_metric(&dl_metric, &ul_metric);
   my_sched.cell_cfg(&cell_cfg);  
 

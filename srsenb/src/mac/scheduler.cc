@@ -32,7 +32,7 @@ sched::~sched()
   pthread_mutex_destroy(&mutex);
 }
 
-void sched::init(rrc_interface_mac *rrc_, srslte::log* log)
+void sched::init(rrc_interface_mac *rrc_, agent_interface_mac *agent_, srslte::log* log)
 {
   sched_cfg.pdsch_max_mcs = 28; 
   sched_cfg.pdsch_mcs     = -1;
@@ -41,6 +41,7 @@ void sched::init(rrc_interface_mac *rrc_, srslte::log* log)
   sched_cfg.nof_ctrl_symbols = 3; 
   log_h = log;   
   rrc   = rrc_; 
+  agent = agent_;
   reset();
 }
 
@@ -665,6 +666,12 @@ int sched::dl_sched(uint32_t tti, sched_interface::dl_sched_res_t* sched_result)
   sched_result->cfi = current_cfi; 
   
   pthread_mutex_unlock(&mutex);
+
+  /* Operate only when agent interface is set */
+  if(agent) {
+    agent->process_DL_results(tti, sched_result);
+  }
+
   return 0; 
 }
 
@@ -839,6 +846,11 @@ int sched::ul_sched(uint32_t tti, srsenb::sched_interface::ul_sched_res_t* sched
   sched_result->nof_phich_elems = nof_phich_elems;
 
   pthread_mutex_unlock(&mutex);
+
+  /* Operate only when agent is set */
+  if(agent) {
+    agent->process_UL_results(tti, sched_result);
+  }
 
   return SRSLTE_SUCCESS;
 }

@@ -566,7 +566,7 @@ int main(int argc, char *argv[])
   generate_cell_configuration(&mac_cfg, &phy_cfg);
   
   my_phy.init(&phy_args, &phy_cfg, &my_radio, &my_mac, &log_phy);
-  my_mac.init(&mac_args, &mac_cfg.cell, &my_phy, &my_tester, &my_tester, &log_mac);
+  my_mac.init(&mac_args, &mac_cfg.cell, &my_phy, &my_tester, &my_tester, NULL, &log_mac);
   my_rlc.init(&my_tester, &my_tester, &my_tester, &log_rlc, &my_mac, 0 /* SRB0 */);
   my_tester.init(&my_rlc, &my_mac, &my_phy, &log_tester, prog_args.ip_address);
     

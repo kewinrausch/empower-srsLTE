@@ -63,7 +63,7 @@ class mac
 {
 public:
   mac();
-  bool init(mac_args_t *args, srslte_cell_t *cell, phy_interface_mac *phy, rlc_interface_mac *rlc, rrc_interface_mac *rrc, srslte::log *log_h);
+  bool init(mac_args_t *args, srslte_cell_t *cell, phy_interface_mac *phy, rlc_interface_mac *rlc, rrc_interface_mac *rrc, agent_interface_mac * agent, srslte::log *log_h);
   void stop();
   
   void start_pcap(srslte::mac_pcap* pcap_);
@@ -125,6 +125,7 @@ private:
   phy_interface_mac    *phy_h; 
   rlc_interface_mac    *rlc_h;
   rrc_interface_mac    *rrc_h;
+  agent_interface_mac  *agent_h;
   srslte::log          *log_h;
   
   srslte_cell_t cell; 

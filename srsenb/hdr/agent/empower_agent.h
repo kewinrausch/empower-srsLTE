@@ -37,12 +37,15 @@
 #include <srslte/common/log_filter.h>
 #include <srslte/common/threads.h>
 
+#include <emage/emproto.h>
 #include "agent/agent.h"
 
 namespace srsenb {
 
+#define EMPOWER_AGENT_MAX_UE            32
 #define EMPOWER_AGENT_MAX_MEAS          32
 #define EMPOWER_AGENT_MAX_CELL_MEAS     8
+#define EMPOWER_AGENT_MAX_MACREP        8
 
 /* State of the agent thread. */
 enum agent_state {
@@ -54,20 +57,22 @@ enum agent_state {
   AGENT_STATE_STARTED,
 };
 
-/* Features supported by this agent. */
-enum agent_feature {
-  /* Report the connection/disconnection of UE. */
-  AGENT_FEAT_UE_REPORT = 1,
-};
-
 class empower_agent :
   public agent
 {
 public:
+  /* MAC report details */
+  typedef struct mac_report {
+    uint32_t        mod_id;
+    int             trigger_id;
+    uint32_t        interval;
+    uint64_t        DL_acc;
+    uint64_t        UL_acc;
+    struct timespec last;
+  } macrep;
+
   empower_agent();
   ~empower_agent();
-
-  int enable_feature(int feature, int module, int trigger);
 
   unsigned int get_id();
 
@@ -83,15 +88,27 @@ public:
   /* Release any reserved resource. */
   void release();
 
-  void setup_UE_period_meas(
+  int reset();
+
+  int setup_UE_report(uint32_t mod_id, int trig_id);
+  int setup_MAC_report(uint32_t mod_id, uint32_t interval, int trig_id);
+
+  int setup_UE_period_meas(
+    uint32_t id,
+    int      trigger_id,
     uint16_t rnti,
     uint32_t mod_id,
     uint16_t freq,
-    uint8_t  max_cells,
-    int      interval,
-    uint8_t  meas_id,
-    uint8_t  obj_id,
-    uint8_t  rep_id);
+    uint16_t max_cells,
+    uint16_t max_meas,
+    int      interval);
+
+  /* agent_interface_mac: */
+
+  void process_DL_results(
+    uint32_t tti, sched_interface::dl_sched_res_t * sched_result);
+  void process_UL_results(
+    uint32_t tti, sched_interface::ul_sched_res_t * sched_result);
 
   /* agent_interface_rrc: */
 
@@ -106,30 +123,54 @@ public:
   void stop();
 
 private:
+  /*
+   * EmPOWER UE class
+   */
 
   class em_ue {
+
   public:
     typedef struct {
+      int      dirty;
       uint16_t pci;
       uint8_t  rsrp;
       uint8_t  rsrq;
     }ue_cell_meas;
 
     typedef struct {
-      uint32_t mod_id;
+      uint32_t     id;     /* Id assigned by agent-controller circuit */
+      uint32_t     mod_id;
+      int          trig_id;
+
+      uint32_t     meas_id;/* Id for UE-eNB circuit */
+      uint32_t     obj_id;
+      uint32_t     rep_id;
+
+      uint16_t     freq;
+      uint16_t     max_cells;
+      uint16_t     max_meas;
+      int          interval;
 
       ue_cell_meas carrier;
-      int c_dirty;
+      int          c_dirty;
 
       ue_cell_meas neigh[EMPOWER_AGENT_MAX_CELL_MEAS];
-      int n_dirty[EMPOWER_AGENT_MAX_CELL_MEAS];
     }ue_meas;
 
-    uint64_t imsi;
-    uint32_t plmn;
+    uint64_t m_imsi;
+    uint32_t m_plmn;
 
-    ue_meas  meas[EMPOWER_AGENT_MAX_MEAS];
-  }; /* class em_ue */
+    uint32_t m_next_meas_id;
+    uint32_t m_next_obj_id;
+    uint32_t m_next_rep_id;
+    ue_meas  m_meas[EMPOWER_AGENT_MAX_MEAS];
+
+    em_ue();
+  };
+
+  /*
+   * End class em_ue
+   */
 
   unsigned int       m_id;
 
@@ -141,6 +182,8 @@ private:
   srsenb::rrc *      m_rrc;
   srslte::log *      m_logger;
 
+  void *             m_args;
+
   int                m_uer_feat;
   int                m_uer_tr;
   unsigned int       m_uer_mod;
@@ -148,6 +191,14 @@ private:
   int                m_nof_ues;
   std::map<uint16_t, em_ue *> m_ues;
   int                m_ues_dirty;
+
+  macrep             m_macrep[EMPOWER_AGENT_MAX_MACREP];
+
+  uint32_t           m_DL_sf;
+  uint32_t           m_DL_prbs_used;
+
+  uint32_t           m_UL_sf;
+  uint32_t           m_UL_prbs_used;
 
   /* Thread: */
 
@@ -159,6 +210,9 @@ private:
 
   void dirty_ue_check();
   void measure_check();
+  void macrep_check();
+  int  prbs_from_dci(void * DCI, int dl, uint32_t cell_prbs);
+  int  prbs_from_mask(int RA_format, uint32_t mask, uint32_t cell_prbs);
 
   /* Thread: */
 
@@ -166,8 +220,9 @@ private:
 
   /* Interaction with controller: */
 
+  void send_MAC_report(uint32_t mod_id, ep_macrep_det * det);
   void send_UE_report(void);
-  void send_UE_meas(uint16_t rnti, int m);
+  void send_UE_meas(em_ue::ue_meas * m);
 
 };
 

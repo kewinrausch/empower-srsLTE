@@ -51,20 +51,21 @@ mac::mac() : timers_db(128),
   pcap = NULL; 
 }
   
-bool mac::init(mac_args_t *args_, srslte_cell_t *cell_, phy_interface_mac *phy, rlc_interface_mac *rlc, rrc_interface_mac *rrc, srslte::log *log_h_)
+bool mac::init(mac_args_t *args_, srslte_cell_t *cell_, phy_interface_mac *phy, rlc_interface_mac *rlc, rrc_interface_mac *rrc, agent_interface_mac * agent, srslte::log *log_h_)
 {
   started = false; 
 
   if (cell_ && phy && rlc && log_h_ && args_) {
-    phy_h = phy;
-    rlc_h = rlc; 
-    rrc_h = rrc; 
-    log_h = log_h_; 
+    phy_h   = phy;
+    rlc_h   = rlc;
+    rrc_h   = rrc;
+    agent_h = agent;
+    log_h   = log_h_;
         
     memcpy(&args, args_, sizeof(mac_args_t));
     memcpy(&cell, cell_, sizeof(srslte_cell_t));
     
-    scheduler.init(rrc, log_h);
+    scheduler.init(rrc, agent, log_h);
     // Set default scheduler (RR)
     scheduler.set_metric(&sched_metric_dl_rr, &sched_metric_ul_rr);
     

@@ -272,6 +272,14 @@ public:
   // virtual void ue_capabilities(uint16_t rnti, LIBLTE_RRC_UE_EUTRA_CAPABILITY_STRUCT *caps) = 0;
 };
 
+// Agent interface for MAC
+class agent_interface_mac
+{
+public:
+  virtual void process_DL_results(uint32_t tti, sched_interface::dl_sched_res_t * sched_result) = 0;
+  virtual void process_UL_results(uint32_t tti, sched_interface::ul_sched_res_t * sched_result) = 0;
+};
+
 // Agent interface for RRC
 class agent_interface_rrc
 {

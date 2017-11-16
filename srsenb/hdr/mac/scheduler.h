@@ -82,7 +82,7 @@ public:
   sched(); 
   ~sched();
 
-  void init(rrc_interface_mac *rrc, srslte::log *log);
+  void init(rrc_interface_mac *rrc, agent_interface_mac *agent, srslte::log *log);
   void set_metric(metric_dl *dl_metric, metric_ul *ul_metric);
   int cell_cfg(cell_cfg_t *cell_cfg); 
   void set_sched_cfg(sched_args_t *sched_cfg);
@@ -141,6 +141,7 @@ private:
   metric_ul *ul_metric; 
   srslte::log *log_h; 
   rrc_interface_mac *rrc;
+  agent_interface_mac *agent;
   
   cell_cfg_t cfg; 
   sched_args_t sched_cfg; 

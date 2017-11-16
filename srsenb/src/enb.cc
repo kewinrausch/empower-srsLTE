@@ -218,7 +218,7 @@ bool enb::init(all_args_t *args_)
 
   // Init all layers   
   phy.init(&args->expert.phy, &phy_cfg, &radio, &mac, phy_log);
-  mac.init(&args->expert.mac, &cell_cfg, &phy, &rlc, &rrc, &mac_log);
+  mac.init(&args->expert.mac, &cell_cfg, &phy, &rlc, &rrc, &agent, &mac_log);
   rlc.init(&pdcp, &rrc, &mac, &mac, &rlc_log);
   pdcp.init(&rlc, &rrc, &gtpu, &pdcp_log);
   rrc.init(&rrc_cfg, &phy, &mac, &rlc, &pdcp, &s1ap, &gtpu, &agent, &rrc_log);
