@@ -37,7 +37,7 @@
 
 namespace srsue {
 
-mux::mux() : pdu_msg(MAX_NOF_SUBHEADERS)
+mux::mux(uint8_t nof_harq_proc_) : pdu_msg(MAX_NOF_SUBHEADERS), pid_has_bsr(nof_harq_proc_), nof_harq_proc(nof_harq_proc_)
 {
   pthread_mutex_init(&mutex, NULL);
   
@@ -51,7 +51,7 @@ mux::mux() : pdu_msg(MAX_NOF_SUBHEADERS)
   msg3_flush();
 }
 
-void mux::init(rlc_interface_mac *rlc_, srslte::log *log_h_, bsr_proc *bsr_procedure_, phr_proc *phr_procedure_)
+void mux::init(rlc_interface_mac *rlc_, srslte::log *log_h_, bsr_interface_mux *bsr_procedure_, phr_proc *phr_procedure_)
 {
   log_h      = log_h_;
   rlc        = rlc_;
@@ -141,7 +141,7 @@ srslte::sch_subh::cetype bsr_format_convert(bsr_proc::bsr_format_t format) {
 
 void mux::pusch_retx(uint32_t tx_tti, uint32_t pid)
 {
-  if (pid_has_bsr[pid%MAX_HARQ_PROC]) {
+  if (pid_has_bsr[pid%nof_harq_proc]) {
     bsr_procedure->set_tx_tti(tx_tti);
   }
 }
@@ -189,13 +189,17 @@ uint8_t* mux::pdu_get(uint8_t *payload, uint32_t pdu_sz, uint32_t tx_tti, uint32
       bsr_is_inserted  = true; 
     }
   }
+
   // MAC control element for PHR
-  float phr_value; 
-  if (phr_procedure->generate_phr_on_ul_grant(&phr_value)) {
-    if (pdu_msg.new_subh()) {
-      pdu_msg.get()->set_phr(phr_value);
+  if (phr_procedure) {
+    float phr_value;
+    if (phr_procedure->generate_phr_on_ul_grant(&phr_value)) {
+      if (pdu_msg.new_subh()) {
+        pdu_msg.get()->set_phr(phr_value);
+      }
     }
   }
+
   // Update buffer states for all logical channels 
   int sdu_space = pdu_msg.get_sdu_space(); 
   for (uint32_t i=0;i<lch.size();i++) {
@@ -252,7 +256,7 @@ uint8_t* mux::pdu_get(uint8_t *payload, uint32_t pdu_sz, uint32_t tx_tti, uint32
   /* Generate MAC PDU and save to buffer */
   uint8_t *ret = pdu_msg.write_packet(log_h);   
 
-  pid_has_bsr[pid%MAX_HARQ_PROC] = bsr_is_inserted; 
+  pid_has_bsr[pid%nof_harq_proc] = bsr_is_inserted;
   if (bsr_is_inserted) {
     bsr_procedure->set_tx_tti(tx_tti);
   }
@@ -345,14 +349,19 @@ bool mux::msg3_is_transmitted()
 /* Returns a pointer to the Msg3 buffer */
 uint8_t* mux::msg3_get(uint8_t *payload, uint32_t pdu_sz)
 {
-  uint8_t* msg3_buff_start_pdu = pdu_get(msg3_buff, pdu_sz, 0, 0); 
-  if (!msg3_buff_start_pdu) {
-    Error("Moving PDU from Mux unit to Msg3 buffer\n");
+  if (pdu_sz < MSG3_BUFF_SZ - 32) {
+    uint8_t* msg3_buff_start_pdu = pdu_get(msg3_buff, pdu_sz, 0, 0);
+    if (!msg3_buff_start_pdu) {
+      Error("Moving PDU from Mux unit to Msg3 buffer\n");
+      return NULL;
+    }
+    memcpy(payload, msg3_buff_start_pdu, sizeof(uint8_t)*pdu_sz);
+    msg3_has_been_transmitted = true;
+    return payload;
+  } else {
+    Error("Msg3 size (%d) is longer than internal msg3_buff size=%d, (see mux.h)\n", pdu_sz, MSG3_BUFF_SZ-32);
     return NULL;
-  }    
-  memcpy(payload, msg3_buff_start_pdu, sizeof(uint8_t)*pdu_sz);
-  msg3_has_been_transmitted = true; 
-  return payload; 
+  }
 }
 
   

@@ -4,9 +4,9 @@ add_subdirectory(upper)
 add_subdirectory(agent)
 
 # Link libstdc++ and libgcc
-if(STATIC_LIB)
+if(BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
-endif(STATIC_LIB)
+endif(BUILD_STATIC)
 
 if (RPATH)
   SET(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
@@ -32,7 +32,9 @@ target_link_libraries(srsenb  srsenb_agent
 
 if (RPATH)
   set_target_properties(srsenb PROPERTIES INSTALL_RPATH ".")
-endif (RPATH)                          
+endif (RPATH)
+
+install(TARGETS srsenb DESTINATION ${RUNTIME_DIR})
 
 ########################################################################
 # Option to run command after build (useful for remote builds)

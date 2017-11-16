@@ -24,19 +24,24 @@ template<typename metrics_t>
 class metrics_listener
 {
 public: 
-  virtual void set_metrics(metrics_t &m) = 0; 
+  virtual void set_metrics(metrics_t &m, float report_period_secs=1.0) = 0;
 }; 
 
 template<typename metrics_t>
 class metrics_hub : public periodic_thread
 {
 public:
+  metrics_hub() {
+    m         = NULL;
+  }
   bool init(metrics_interface<metrics_t> *m_, float report_period_secs=1.0) {
     m = m_; 
     start_periodic(report_period_secs*1e6);
+    return true;
   }
   void stop() {
     thread_cancel();
+    wait_thread_finish();
   }
   
   void add_listener(metrics_listener<metrics_t> *listener) {
@@ -45,10 +50,13 @@ public:
   
 private:
   void run_period() {
-    metrics_t metric; 
-    m->get_metrics(metric);
-    for (int i=0;i<listeners.size();i++) {
-      listeners[i]->set_metrics(metric);
+    if (m) {
+      metrics_t metric;
+      bzero(&metric, sizeof(metrics_t));
+      m->get_metrics(metric);
+      for (uint32_t i=0;i<listeners.size();i++) {
+        listeners[i]->set_metrics(metric);
+      }
     }
   }
   metrics_interface<metrics_t> *m;
