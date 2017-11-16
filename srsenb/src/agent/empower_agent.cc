@@ -55,28 +55,24 @@
   do {                                        \
     m_logger->error_line(                     \
       __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
 #define Warning(fmt, ...)                     \
   do {                                        \
     m_logger->warning_line(                   \
       __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
 #define Info(fmt, ...)                        \
   do {                                        \
     m_logger->info_line(                      \
       __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
 #define Debug(fmt, ...)                       \
   do {                                        \
     m_logger->debug_line(                     \
       __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
-    printf(fmt, ##__VA_ARGS__);               \
   } while(0)
 
 #define RSRP_RANGE_TO_VALUE(x)	((float)x - 140.0f)
@@ -399,12 +395,11 @@ int empower_agent::reset()
 
 int empower_agent::setup_UE_report(uint32_t mod_id, int trig_id)
 {
-  Debug("Enabling UE report agent feature, module=%d, trigger=%d\n",
-    mod_id, trig_id);
-
   m_uer_mod  = mod_id;
   m_uer_tr   = trig_id;
   m_uer_feat = 1;
+
+  Debug("UE report ready; reporting to module %d\n", mod_id);
 
   return 0;
 }
@@ -440,6 +435,8 @@ int empower_agent::setup_MAC_report(
     if(blen > 0) {
       em_send(em_agent->get_id(), buf, blen);
     }
+
+    Debug("New MAC report from module %d ready\n", mod_id);
 
     return 0;
   }
@@ -510,7 +507,7 @@ int empower_agent::setup_UE_period_meas(
   m_ues[rnti]->m_meas[i].obj_id      = m_ues[rnti]->m_next_obj_id++;
   m_ues[rnti]->m_meas[i].rep_id      = m_ues[rnti]->m_next_rep_id++;
 
-  Debug("Setting up RRC measurement %d for RNTI %x\n", m_ues[rnti]->m_meas[i].meas_id, rnti);
+  Debug("Setting up RRC measurement %d-->%d for RNTI %x\n", m_ues[rnti]->m_meas[i].id, m_ues[rnti]->m_meas[i].meas_id, rnti);
 
   /*
    * Prepare RRC request to send to the UE.
@@ -602,7 +599,7 @@ int empower_agent::setup_UE_period_meas(
     meas.meas_id_to_add_mod_list.meas_id_list[n].rep_cnfg_id                                         = m_ues[rnti]->m_meas[j].rep_id;
   }
 
-  Debug("Sending RRC reconfiguration for %d measurement(s)\n", n + 1);
+  Debug("Sending to %x a new RRC reconfiguration for %d measurement(s)\n", rnti, n + 1);
 
   m_rrc->setup_ue_measurement(rnti, &meas);
 
@@ -668,14 +665,11 @@ void empower_agent::add_user(uint16_t rnti)
   it = m_ues.find(rnti);
 
   if(it == m_ues.end()) {
-    Debug("Adding user %x\n", rnti);
-
-    m_ues.insert(std::make_pair(rnti, new em_ue()));
+     m_ues.insert(std::make_pair(rnti, new em_ue()));
     m_nof_ues++;
 
-    m_ues[rnti]->m_plmn = 0x222093;
-    //m_ues[rnti]->m_plmn  = (args->enb.s1ap.mcc & 0x0fff) << 12;
-    //m_ues[rnti]->m_plmn |= (args->enb.s1ap.mnc & 0x0fff);
+    m_ues[rnti]->m_plmn  = (args->enb.s1ap.mcc & 0x0fff) << 12;
+    m_ues[rnti]->m_plmn |= (args->enb.s1ap.mnc & 0x0fff);
 
     m_ues[rnti]->m_next_meas_id = 1;
     m_ues[rnti]->m_next_obj_id  = 1;
@@ -687,6 +681,8 @@ void empower_agent::add_user(uint16_t rnti)
     if(m_uer_feat) {
       m_ues_dirty = 1;
     }
+
+    Debug("Added user %x (PLMN:%x)\n", rnti, m_ues[rnti]->m_plmn);
   }
 
   pthread_spin_unlock(&m_lock);
@@ -741,6 +737,8 @@ void empower_agent::report_RRC_measure(
   }
 
   if(m_ues.count(rnti) != 0) {
+    Debug("Saving received RRC measure %d from user %x\n", m_ues[rnti]->m_meas[i].id, rnti);
+
     m_ues[rnti]->m_meas[i].carrier.rsrp = report->meas_results.meas_result_pcell.rsrp_range;
     m_ues[rnti]->m_meas[i].carrier.rsrq = report->meas_results.meas_result_pcell.rsrq_range;
     m_ues[rnti]->m_meas[i].c_dirty      = 1;
@@ -889,6 +887,8 @@ void empower_agent::send_UE_meas(em_ue::ue_meas * m)
 
 void empower_agent::dirty_ue_check()
 {
+  Debug("Checking for changes in the UE status\n");
+
   /* Check if trigger is still there */
   if(!em_has_trigger(m_id, m_uer_tr)) {
     m_uer_feat = 0;
@@ -896,6 +896,8 @@ void empower_agent::dirty_ue_check()
   }
 
   if(m_ues_dirty) {
+    Debug("Sending UE report\n");
+
     send_UE_report();
     m_ues_dirty = 0;
   }
@@ -905,6 +907,8 @@ void empower_agent::measure_check()
 {
   int i;
   std::map<uint16_t, em_ue *>::iterator it;
+
+  Debug("Checking for changes in the UE RRC measurements status\n");
 
   for (it = m_ues.begin(); it != m_ues.end(); ++it) {
     for(i = 0; i < EMPOWER_AGENT_MAX_MEAS; i++) {
@@ -917,10 +921,14 @@ void empower_agent::measure_check()
         it->second->m_meas[i].trig_id = 0;
         it->second->m_meas[i].mod_id  = 0;
         it->second->m_meas[i].meas_id = 0;
+
+        Debug("RRC measurement %d removed\n", m_id);
         continue;
       }
 
       if(it->second->m_meas[i].c_dirty) {
+        Debug("Sending RRC measurement for UE %x\n", it->first);
+
         send_UE_meas(&it->second->m_meas[i]);
         it->second->m_meas[i].c_dirty = 0;
       }
@@ -936,6 +944,8 @@ void empower_agent::macrep_check()
 
   all_args_t *    args = (all_args_t *)m_args;
 
+  Debug("Checking for changes in the MAC status\n");
+
   for(i = 0; i < EMPOWER_AGENT_MAX_MACREP; i++) {
     if(!m_macrep[i].trigger_id) {
       continue;
@@ -944,6 +954,8 @@ void empower_agent::macrep_check()
     /* Trigger no more there; mark as free slot */
     if(!em_has_trigger(m_id, m_macrep[i].trigger_id)) {
       m_macrep[i].trigger_id = 0;
+
+      Debug("MAC report for module %d revoked\n", m_macrep[i].mod_id);
     }
 
     clock_gettime(CLOCK_REALTIME, &now);
@@ -959,6 +971,7 @@ void empower_agent::macrep_check()
       m_macrep[i].last.tv_sec  = now.tv_sec;
       m_macrep[i].last.tv_nsec = now.tv_nsec;
 
+      Debug("Sending MAC report for module %d\n", m_macrep[i].mod_id);
       send_MAC_report(m_macrep[i].mod_id, &mac);
 
       m_DL_sf                  = 0;
@@ -1077,7 +1090,7 @@ void empower_agent::stop()
 
     pthread_join(m_thread, 0);
 
-    Debug("Agent stopped\n");
+    Debug("Agent stopped!\n");
   }
 
   release();
