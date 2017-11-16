@@ -57,6 +57,18 @@ void dummy_agent::stop()
  * agent_interface_mac.                                                       *
  ******************************************************************************/
 
+void dummy_agent::process_DL_results(
+  uint32_t tti, sched_interface::dl_sched_res_t * sched_result)
+{
+  return;
+}
+
+void dummy_agent::process_UL_results(
+  uint32_t tti, sched_interface::ul_sched_res_t * sched_result)
+{
+  return;
+}
+
 /******************************************************************************
  * agent_interface_rrc.                                                       *
  ******************************************************************************/

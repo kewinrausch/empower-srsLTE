@@ -53,6 +53,13 @@ public:
 
   void stop();
 
+  /* agent_interface_mac: */
+
+  void process_DL_results(
+    uint32_t tti, sched_interface::dl_sched_res_t * sched_result);
+  void process_UL_results(
+    uint32_t tti, sched_interface::ul_sched_res_t * sched_result);
+
   /* agent_interface_rrc: */
 
   void add_user(uint16_t rnti);
