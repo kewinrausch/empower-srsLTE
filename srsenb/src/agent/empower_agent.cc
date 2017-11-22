@@ -783,11 +783,6 @@ void empower_agent::send_MAC_report(uint32_t mod_id, ep_macrep_det * det)
     return;
   }
 
-  for(i = 0; i < size; i++) {
-    printf("%02x ", (unsigned char)buf[i]);
-  }
-  printf("\n");
-
   Debug("Sending MAC report\n");
 
   em_send(m_id, buf, size);
