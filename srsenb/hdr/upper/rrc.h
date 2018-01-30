@@ -79,6 +79,8 @@ typedef struct {
   LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_STRUCT    sibs[LIBLTE_RRC_MAX_SIB];  
   LIBLTE_RRC_MAC_MAIN_CONFIG_STRUCT        mac_cnfg; 
   LIBLTE_RRC_PUSCH_CONFIG_DEDICATED_STRUCT pusch_cfg;   
+  LIBLTE_RRC_ANTENNA_INFO_DEDICATED_STRUCT antenna_info;
+  LIBLTE_RRC_PDSCH_CONFIG_P_A_ENUM         pdsch_cfg;
   rrc_cfg_sr_t                             sr_cfg; 
   rrc_cfg_cqi_t                            cqi_cfg; 
   rrc_cfg_qci_t                            qci_cfg[MAX_NOF_QCI]; 
@@ -192,6 +194,8 @@ public:
     void handle_rrc_con_reest_req(LIBLTE_RRC_CONNECTION_REESTABLISHMENT_REQUEST_STRUCT *msg); 
     void handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu);
     void handle_rrc_meas_report(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * msg);
+    void handle_rrc_reconf_complete(LIBLTE_RRC_CONNECTION_RECONFIGURATION_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu);
+
     void handle_security_mode_complete(LIBLTE_RRC_SECURITY_MODE_COMPLETE_STRUCT *msg);
     void handle_security_mode_failure(LIBLTE_RRC_SECURITY_MODE_FAILURE_STRUCT *msg);
     void handle_ue_cap_info(LIBLTE_RRC_UE_CAPABILITY_INFORMATION_STRUCT *msg);
@@ -278,7 +282,7 @@ public:
     uint32_t cqi_idx; 
     bool cqi_allocated; 
     int cqi_sched_sf_idx; 
-    bool cqi_sched_prb_idx; 
+    int cqi_sched_prb_idx;
     int get_drbid_config(LIBLTE_RRC_DRB_TO_ADD_MOD_STRUCT *drb, int drbid);
   }; 
   

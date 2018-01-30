@@ -1218,6 +1218,9 @@ typedef enum{
 }LIBLTE_RRC_REPORT_AMOUNT_ENUM;
 static const char liblte_rrc_report_amount_text[LIBLTE_RRC_REPORT_AMOUNT_N_ITEMS][20] = {      "r1",       "r2",       "r4",       "r8",
                                                                                               "r16",      "r32",      "r64", "INFINITY"};
+
+static const int8 liblte_rrc_report_amount_num[LIBLTE_RRC_REPORT_AMOUNT_N_ITEMS] = {1, 2, 4, 8, 16, 32, 64, -1};
+
 typedef enum{
     LIBLTE_RRC_THRESHOLD_UTRA_TYPE_RSCP = 0,
     LIBLTE_RRC_THRESHOLD_UTRA_TYPE_ECNO,
@@ -1749,41 +1752,10 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_object_utra_ie(uint8                   
     Document Reference: 36.331 v10.0.0 Section 6.3.5
 *********************************************************************/
 // Defines
-#define LIBLTE_RRC_MAX_NEIGH_CELLS_EUTRA	8
 // Enums
-typedef enum  {
-	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_EUTRA,
-	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_UTRA,
-	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_GERAN,
-	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_CDMA2000,
-	LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_N_ITEMS
-}LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM;
 // Structs
-typedef struct {
-    uint16 pci;
-    uint8  rsrp_range;
-    uint8  rsrq_range;
-    bool   rsrp_present;
-    bool   rsrq_present;
-    bool   cgi_info_present;
-}LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT;
-typedef struct {
-    uint8 rsrp_range;
-    uint8 rsrq_range;
-}LIBLTE_RRC_MEAS_RESULT_PCELL_STRUCT;
-typedef struct {
-    uint8                                   meas_id;
-    LIBLTE_RRC_MEAS_RESULT_PCELL_STRUCT     meas_result_pcell;
-    LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM neigh_cells_type;
-    uint32                                  n_of_neigh_cells;
-    LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT     neigh_cells_EUTRA[LIBLTE_RRC_MAX_NEIGH_CELLS_EUTRA];
-    bool                                    meas_results_neigh_cells_present;
-}LIBLTE_RRC_MEAS_RESULTS_STRUCT;
 // Functions
-LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_msg(LIBLTE_RRC_MEAS_RESULTS_STRUCT *meas_result,
-                                                  LIBLTE_BIT_MSG_STRUCT          *msg);
-LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_msg(uint8                         **ie_ptr,
-                                                   LIBLTE_RRC_MEAS_RESULTS_STRUCT *meas_result);
+// FIXME
 
 /*********************************************************************
     IE Name: Quantity Config
@@ -2712,6 +2684,7 @@ typedef enum{
 }LIBLTE_RRC_T304_ENUM;
 static const char liblte_rrc_t304_text[LIBLTE_RRC_T304_N_ITEMS][20] = {   "50",   "100",   "150",   "200",
                                                                          "500",  "1000",  "2000", "SPARE"};
+static const int32 liblte_rrc_t304_num[LIBLTE_RRC_T304_N_ITEMS] = {50, 100, 150, 200, 500, 1000, 2000, -1};
 // Structs
 typedef struct{
     uint8 p_b;
@@ -3957,7 +3930,7 @@ typedef enum{
 }LIBLTE_RRC_PDSCH_CONFIG_P_A_ENUM;
 static const char liblte_rrc_pdsch_config_p_a_text[LIBLTE_RRC_PDSCH_CONFIG_P_A_N_ITEMS][20] = {   "-6", "-4.77",    "-3", "-1.77",
                                                                                                    "0",     "1",     "2",     "3"};
-static const double liblte_rrc_pdsch_config_p_a_num[LIBLTE_RRC_PDSCH_CONFIG_P_A_N_ITEMS] = {-6, -4.77, -3, -1.77, 0, 1, 2, 3};
+static const float liblte_rrc_pdsch_config_p_a_num[LIBLTE_RRC_PDSCH_CONFIG_P_A_N_ITEMS] = {-6, -4.77f, -3, -1.77f, 0, 1, 2, 3};
 // Structs
 // PDSCH Config Common struct defined above
 // Functions
@@ -6466,30 +6439,108 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_mobility_from_eutra_command_msg(LIBLTE_BIT_M
 
     Document Reference: 36.331 v10.0.0 Section 6.2.2 
 *********************************************************************/
-// Defines
-// Enums
-typedef enum {
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_R8,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE7,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE6,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE5,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE4,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE3,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE2,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_SPARE1,
-	LIBLTE_RRC_MEASUREMENT_REPORT_C1_N_ITEMS,
-}LIBLTE_RRC_MEASUREMENT_REPORT_C1_ENUM;
+typedef struct{
+    LIBLTE_RRC_CELL_GLOBAL_ID_EUTRA_STRUCT  cell_global_id;
+    uint16                                  tracking_area_code;
+    LIBLTE_RRC_PLMN_IDENTITY_STRUCT         plmn_identity_list[5];
+    uint32                                  n_plmn_identity_list;
+    bool                                    have_plmn_identity_list;
+}LIBLTE_RRC_CGI_INFO_STRUCT;
+LIBLTE_ERROR_ENUM liblte_rrc_pack_cgi_info_ie(LIBLTE_RRC_CGI_INFO_STRUCT  *cgi_info,
+                                              uint8                      **ie_ptr);
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_cgi_info_ie(uint8                      **ie_ptr,
+                                                LIBLTE_RRC_CGI_INFO_STRUCT  *cgi_info);
+
+typedef struct{
+    uint8 rsrp_result;
+    bool  have_rsrp;
+    uint8 rsrq_result;
+    bool  have_rsrq;
+}LIBLTE_RRC_MEAS_RESULT_STRUCT;
+LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_ie(LIBLTE_RRC_MEAS_RESULT_STRUCT  *meas_result,
+                                                 uint8                         **ie_ptr);
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_ie(uint8                         **ie_ptr,
+                                                   LIBLTE_RRC_MEAS_RESULT_STRUCT  *meas_result);
+
+typedef struct{
+    uint16                                  phys_cell_id;
+    LIBLTE_RRC_CGI_INFO_STRUCT              cgi_info;
+    bool                                    have_cgi_info;
+    LIBLTE_RRC_MEAS_RESULT_STRUCT           meas_result;
+}LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT;
+LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_eutra_ie(LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT  *meas_result_eutra,
+                                                       uint8                               **ie_ptr);
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_eutra_ie(uint8                               **ie_ptr,
+                                                         LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT  *meas_result_eutra);
+
+typedef struct{
+  //FIXME
+}LIBLTE_RRC_MEAS_RESULT_UTRA_STRUCT;
+typedef struct{
+  //FIXME
+}LIBLTE_RRC_MEAS_RESULT_GERAN_STRUCT;
+typedef struct{
+  //FIXME
+}LIBLTE_RRC_MEAS_RESULT_CDMA2000_STRUCT;
+
+
+
+typedef struct{
+    LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT     result_eutra_list[8];
+    uint8                                   n_result;
+}LIBLTE_RRC_MEAS_RESULT_LIST_EUTRA_STRUCT;
+
+typedef struct{
+    LIBLTE_RRC_MEAS_RESULT_UTRA_STRUCT     result_utra_list[8];
+    uint8                                   n_result;
+}LIBLTE_RRC_MEAS_RESULT_LIST_UTRA_STRUCT;
+
+typedef struct{
+    LIBLTE_RRC_MEAS_RESULT_GERAN_STRUCT     result_geran_list[8];
+    uint8                                   n_result;
+}LIBLTE_RRC_MEAS_RESULT_LIST_GERAN_STRUCT;
+
+
+typedef struct{
+    bool pre_registration_status_HRPD;
+    LIBLTE_RRC_MEAS_RESULT_CDMA2000_STRUCT cdma2000[8];
+}LIBLTE_RRC_MEAS_RESULTS_CDMA2000_STRUCT;
+
+typedef enum{
+    LIBLTE_RRC_MEAS_RESULT_LIST_EUTRA = 0,
+    LIBLTE_RRC_MEAS_RESULT_LIST_UTRA,
+    LIBLTE_RRC_MEAS_RESULT_LIST_GERAN,
+    LIBLTE_RRC_MEAS_RESULTS_CDMA2000,
+    LIBLTE_RRC_MEAS_RESULT_N_ITEMS,
+}LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM;
+static const char liblte_rrc_meas_reult_neigh_cells_text[LIBLTE_RRC_MEAS_RESULT_N_ITEMS][32] = { "measResultListEUTRA",  "measResultListUTRA",  "measResultListGERAN",  "measResultsCDMA2000"};
+
+
+typedef union{
+    LIBLTE_RRC_MEAS_RESULT_LIST_EUTRA_STRUCT     eutra;
+    LIBLTE_RRC_MEAS_RESULT_LIST_UTRA_STRUCT      utra;
+    LIBLTE_RRC_MEAS_RESULT_LIST_GERAN_STRUCT     geran;
+    LIBLTE_RRC_MEAS_RESULTS_CDMA2000_STRUCT cdma2000;
+}LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_UNION;
+
+//TODO: pack/unpack for the result lists
+
+
 // Structs
 typedef struct{
-    LIBLTE_RRC_MEAS_RESULTS_STRUCT        meas_results;
-    LIBLTE_RRC_MEASUREMENT_REPORT_C1_ENUM meas_result_type;
-    bool                                  non_crit_ext_present;
+    uint8   meas_id;
+    uint8   pcell_rsrp_result;
+    uint8   pcell_rsrq_result;
+
+    LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_UNION  meas_result_neigh_cells;
+    LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM   meas_result_neigh_cells_choice;
+    bool                                      have_meas_result_neigh_cells;
 }LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT;
 // Functions
-LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_report_msg(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report,
-                                                  LIBLTE_BIT_MSG_STRUCT                *msg);
-LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_report_msg(LIBLTE_BIT_MSG_STRUCT                *msg,
-                                                    LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report);
+LIBLTE_ERROR_ENUM liblte_rrc_pack_measurement_report_msg(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report,
+                                                         LIBLTE_BIT_MSG_STRUCT                *msg);
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_measurement_report_msg(LIBLTE_BIT_MSG_STRUCT                *msg,
+                                                           LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report);
 
 /*********************************************************************
     Message Name: MBSFN Area Configuration

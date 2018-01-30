@@ -71,9 +71,13 @@ namespace srsenb {
 typedef struct {
   s1ap_args_t s1ap; 
   uint32_t    n_prb; 
-  uint32_t    pci;
   std::string ctrl_addr;
   uint16_t    ctrl_port;
+  uint32_t    pci; 
+  uint32_t    nof_ports;
+  uint32_t    transmission_mode;
+  float       p_a;
+
 }enb_args_t;
 
 typedef struct {
@@ -119,6 +123,7 @@ typedef struct {
   int           s1ap_hex_limit;
   int           agent_hex_limit;
   int           all_hex_limit;
+  int           file_max_size;
   std::string   filename;
 }log_args_t;
 

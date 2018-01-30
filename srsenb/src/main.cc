@@ -81,6 +81,10 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
     ("enb.ctrl_addr",    bpo::value<string>(&args->enb.ctrl_addr)->default_value("127.0.0.1"),     "Controller IP address")
     ("enb.ctrl_port",    bpo::value<uint16_t>(&args->enb.ctrl_port)->default_value(2210),          "Controller TCP port")
 
+    ("enb.nof_ports",     bpo::value<uint32_t>(&args->enb.nof_ports)->default_value(1),            "Number of ports")
+    ("enb.tm",            bpo::value<uint32_t>(&args->enb.transmission_mode)->default_value(1),    "Transmission mode (1-8)")
+    ("enb.p_a",           bpo::value<float>(&args->enb.p_a)->default_value(0.0f),                  "Power allocation rho_a (-6, -4.77, -3, -1.77, 0, 1, 2, 3)")
+
     ("enb_files.sib_config", bpo::value<string>(&args->enb_files.sib_config)->default_value("sib.conf"),      "SIB configuration files")
     ("enb_files.rr_config",  bpo::value<string>(&args->enb_files.rr_config)->default_value("rr.conf"),      "RR configuration files")
     ("enb_files.drb_config", bpo::value<string>(&args->enb_files.drb_config)->default_value("drb.conf"),      "DRB configuration files")
@@ -123,6 +127,7 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
     ("log.all_hex_limit", bpo::value<int>(&args->log.all_hex_limit)->default_value(32),  "ALL log hex dump limit")
 
     ("log.filename",      bpo::value<string>(&args->log.filename)->default_value("/tmp/ue.log"),"Log filename")
+    ("log.file_max_size", bpo::value<int>(&args->log.file_max_size)->default_value(-1), "Maximum file size (in kilobytes). When passed, multiple files are created. Default -1 (single file)")
 
     /* MCS section */
     ("scheduler.pdsch_mcs",
@@ -327,12 +332,18 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
   }
 }
 
+static int  sigcnt = 0;
 static bool running    = true;
 static bool do_metrics = false;
 
 void sig_int_handler(int signo)
 {
+  sigcnt++;
   running = false;
+  printf("Stopping srsENB... Press Ctrl+C %d more times to force stop\n", 10-sigcnt);
+  if (sigcnt >= 10) {
+    exit(-1);
+  }
 }
 
 void *input_loop(void *m)
@@ -360,6 +371,8 @@ int main(int argc, char *argv[])
   all_args_t        args;
   metrics_stdout    metrics;
   enb              *enb = enb::get_instance();
+
+  srslte_debug_handle_crash(argc, argv);
 
   cout << "---  Software Radio Systems LTE eNodeB  ---" << endl << endl;
 

@@ -2568,104 +2568,7 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_object_utra_ie(uint8                   
 
     Document Reference: 36.331 v10.0.0 Section 6.3.5
 *********************************************************************/
-LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_msg(LIBLTE_RRC_MEAS_RESULTS_STRUCT *meas_result,
-                                                  LIBLTE_BIT_MSG_STRUCT          *msg)
-{
-    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
-
-    /*
-     * This has yet to be implemented.
-     */
-    liblte_rrc_log_print("Packing of RRCMeasurementResult not supported\n");
-
-    return err;
-}
-LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_msg(uint8                         **ie_ptr,
-                                                    LIBLTE_RRC_MEAS_RESULTS_STRUCT *meas_result)
-{
-    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
-
-    int i;
-    int u;
-
-    uint8             r8_ext;
-    uint8             ext;
-    uint8             cgi;
-
-    if(ie_ptr      != NULL &&
-       meas_result != NULL)
-    {
-        // Extension indicator of MeasurementReport-r8-IEs
-        r8_ext = liblte_bits_2_value(ie_ptr, 1);
-
-        // Extension indicator MeasResult
-        ext = liblte_bits_2_value(ie_ptr, 1);
-
-        // Optional indicators
-        meas_result->meas_results_neigh_cells_present = liblte_bits_2_value(ie_ptr, 1);
-
-        // Measurement Id
-        liblte_rrc_unpack_meas_id_ie(ie_ptr, &meas_result->meas_id);
-
-        // Physical cell RSRP/RSRQ values
-        liblte_rrc_unpack_rsrp_range_ie(ie_ptr, &meas_result->meas_result_pcell.rsrp_range);
-        liblte_rrc_unpack_rsrq_range_ie(ie_ptr, &meas_result->meas_result_pcell.rsrq_range);
-
-        if(meas_result->meas_results_neigh_cells_present) {
-        	// Consume choice before/after extension marker
-        	liblte_rrc_warning_not_handled(liblte_bits_2_value(ie_ptr, 1), __func__);
-
-        	// Type of neigh cells
-        	meas_result->neigh_cells_type = (LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM)liblte_bits_2_value(ie_ptr, 2);
-
-        	// Number of cells reported
-        	meas_result->n_of_neigh_cells = liblte_bits_2_value(ie_ptr, 3);
-
-        	for(i = 0, u = 0; i < meas_result->n_of_neigh_cells; i++) {
-        		// CGI info presents
-        		meas_result->neigh_cells_EUTRA[u].cgi_info_present = liblte_bits_2_value(ie_ptr, 1);
-
-        		if(meas_result->neigh_cells_EUTRA[u].cgi_info_present) {
-        			liblte_rrc_log_print("Measurement Results CGI info not handled\n");
-        			return err;
-        		}
-
-        		// PCI
-        		liblte_rrc_unpack_phys_cell_id_ie(ie_ptr, &meas_result->neigh_cells_EUTRA[u].pci);
-
-        		// Extension indicator MeasResultEUTRA
-                        ext = liblte_bits_2_value(ie_ptr, 1);
-
-                        // MeasResultEUTRA options
-                        meas_result->neigh_cells_EUTRA[u].rsrp_present = liblte_bits_2_value(ie_ptr, 1);
-                        meas_result->neigh_cells_EUTRA[u].rsrq_present = liblte_bits_2_value(ie_ptr, 1);
-
-                        // RSRP of the MeasResultEUTRA
-                        if(meas_result->neigh_cells_EUTRA[u].rsrp_present) {
-                            liblte_rrc_unpack_rsrp_range_ie(ie_ptr, &meas_result->meas_result_pcell.rsrp_range);
-                        }
-
-                        // RSRQ of the MeasResultEUTRA
-                        if(meas_result->neigh_cells_EUTRA[u].rsrq_present) {
-                            liblte_rrc_unpack_rsrq_range_ie(ie_ptr, &meas_result->meas_result_pcell.rsrq_range);
-                        }
-
-        		// Consume and keep saving in the last cell slot
-                        if(i >= LIBLTE_RRC_MAX_NEIGH_CELLS_EUTRA) {
-                            liblte_rrc_log_print("Too much cells measurement to handle\n");
-                        } else {
-                            u++;
-                        }
-        	}
-        }
-
-        if(r8_ext) {
-            liblte_rrc_log_print("MeasurementResult non-critical extension NOT handled\n");
-        }
-    }
-
-    return err;
-}
+// FIXME
 
 /*********************************************************************
     IE Name: Quantity Config
@@ -4861,6 +4764,9 @@ LIBLTE_ERROR_ENUM liblte_rrc_pack_plmn_identity_ie(LIBLTE_RRC_PLMN_IDENTITY_STRU
     if(plmn_id != NULL &&
        ie_ptr  != NULL)
     {
+        if(0xFFFF == plmn_id->mcc) {
+          mcc_opt = false;
+        }
         liblte_value_2_bits(mcc_opt, ie_ptr, 1);
 
         if(true == mcc_opt)
@@ -12851,47 +12757,240 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_paging_msg(LIBLTE_BIT_MSG_STRUCT    *msg,
 
     Document Reference: 36.331 v10.0.0 Section 6.2.2 
 *********************************************************************/
-LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_report_msg(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report,
+LIBLTE_ERROR_ENUM liblte_rrc_pack_cgi_info_ie(LIBLTE_RRC_CGI_INFO_STRUCT  *cgi_info,
+                                              uint8                      **ie_ptr)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+
+    if(cgi_info != NULL &&
+       ie_ptr   != NULL)
+    {
+        liblte_value_2_bits(cgi_info->have_plmn_identity_list, ie_ptr,  1);
+        liblte_rrc_pack_cell_global_id_eutra_ie(&cgi_info->cell_global_id, ie_ptr);
+        liblte_rrc_pack_tracking_area_code_ie(cgi_info->tracking_area_code, ie_ptr);
+        if(cgi_info->have_plmn_identity_list) {
+          liblte_value_2_bits(cgi_info->n_plmn_identity_list-1, ie_ptr,  3);
+          for(uint32 i=0; i<cgi_info->n_plmn_identity_list; i++) {
+            liblte_rrc_pack_plmn_identity_ie(&cgi_info->plmn_identity_list[i], ie_ptr);
+          }
+        }
+
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
+}
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_cgi_info_ie(uint8                      **ie_ptr,
+                                                LIBLTE_RRC_CGI_INFO_STRUCT  *cgi_info)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+
+    if(ie_ptr   != NULL &&
+       cgi_info != NULL)
+    {
+        cgi_info->have_plmn_identity_list = (bool)liblte_bits_2_value(ie_ptr,  1);
+        liblte_rrc_unpack_cell_global_id_eutra_ie(ie_ptr, &cgi_info->cell_global_id);
+        liblte_rrc_unpack_tracking_area_code_ie(ie_ptr, &cgi_info->tracking_area_code);
+        if(cgi_info->have_plmn_identity_list) {
+          cgi_info->n_plmn_identity_list = liblte_bits_2_value(ie_ptr,  3) + 1;
+          for(uint32 i=0; i<cgi_info->n_plmn_identity_list; i++) {
+            liblte_rrc_unpack_plmn_identity_ie(ie_ptr, &cgi_info->plmn_identity_list[i]);
+          }
+        }
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
+}
+
+LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_ie(LIBLTE_RRC_MEAS_RESULT_STRUCT  *meas_result,
+                                                 uint8                         **ie_ptr)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+
+    if(meas_result != NULL &&
+       ie_ptr      != NULL)
+    {
+        //ext
+        liblte_value_2_bits(0, ie_ptr,  1);
+
+        //options
+        liblte_value_2_bits(meas_result->have_rsrp, ie_ptr, 1);
+        liblte_value_2_bits(meas_result->have_rsrq, ie_ptr, 1);
+
+        if(meas_result->have_rsrp) {
+          liblte_rrc_pack_rsrp_range_ie(meas_result->rsrp_result, ie_ptr);
+        }
+        if(meas_result->have_rsrq) {
+          liblte_rrc_pack_rsrq_range_ie(meas_result->rsrq_result, ie_ptr);
+        }
+
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
+}
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_ie(uint8                         **ie_ptr,
+                                                   LIBLTE_RRC_MEAS_RESULT_STRUCT  *meas_result)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+
+    if(ie_ptr      != NULL &&
+       meas_result != NULL)
+    {
+        //ext
+        bool ext = liblte_bits_2_value(ie_ptr, 1);
+
+        //options
+        meas_result->have_rsrp = liblte_bits_2_value(ie_ptr, 1);
+        meas_result->have_rsrq = liblte_bits_2_value(ie_ptr, 1);
+
+        if(meas_result->have_rsrp) {
+          liblte_rrc_unpack_rsrp_range_ie(ie_ptr, &meas_result->rsrp_result);
+        }
+        if(meas_result->have_rsrq) {
+          liblte_rrc_unpack_rsrq_range_ie(ie_ptr, &meas_result->rsrq_result);
+        }
+
+        //skip extensions
+        liblte_rrc_consume_noncrit_extension(ext, __func__, ie_ptr);
+
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
+}
+
+LIBLTE_ERROR_ENUM liblte_rrc_pack_meas_result_eutra_ie(LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT  *meas_result_eutra,
+                                                       uint8                               **ie_ptr)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+
+    if(meas_result_eutra != NULL &&
+       ie_ptr            != NULL)
+    {
+        liblte_value_2_bits(meas_result_eutra->have_cgi_info, ie_ptr,  1);
+        liblte_rrc_pack_phys_cell_id_ie(meas_result_eutra->phys_cell_id, ie_ptr);
+        if(meas_result_eutra->have_cgi_info) {
+          liblte_rrc_pack_cgi_info_ie(&meas_result_eutra->cgi_info, ie_ptr);
+        }
+        liblte_rrc_pack_meas_result_ie(&meas_result_eutra->meas_result, ie_ptr);
+
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
+}
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_result_eutra_ie(uint8                               **ie_ptr,
+                                                         LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT  *meas_result_eutra)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+
+    if(ie_ptr            != NULL &&
+       meas_result_eutra != NULL)
+    {
+        meas_result_eutra->have_cgi_info = liblte_bits_2_value(ie_ptr, 1);
+        liblte_rrc_unpack_phys_cell_id_ie(ie_ptr, &meas_result_eutra->phys_cell_id);
+        if(meas_result_eutra->have_cgi_info) {
+          liblte_rrc_unpack_cgi_info_ie(ie_ptr, &meas_result_eutra->cgi_info);
+        }
+        liblte_rrc_unpack_meas_result_ie(ie_ptr, &meas_result_eutra->meas_result);
+
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
+}
+
+LIBLTE_ERROR_ENUM liblte_rrc_pack_measurement_report_msg(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report,
                                                          LIBLTE_BIT_MSG_STRUCT                *msg)
 {
     LIBLTE_ERROR_ENUM  err     = LIBLTE_ERROR_INVALID_INPUTS;
-
-    /*
-     * This has yet to be implemented.
-     */
-    liblte_rrc_log_print("Packing of RRCMeasurementReport not supported\n");
-
-    return err;
-}
-
-LIBLTE_ERROR_ENUM liblte_rrc_unpack_meas_report_msg(LIBLTE_BIT_MSG_STRUCT                *msg,
-                                                           LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report)
-{
-    LIBLTE_ERROR_ENUM  err     = LIBLTE_ERROR_INVALID_INPUTS;
-
     uint8             *msg_ptr = msg->msg;
-    uint32_t          c1_choice;
-    uint8             ext;
 
-    if(msg         != NULL &&
-       meas_report != NULL)
+    if(meas_report != NULL &&
+       msg         != NULL)
     {
-        // Extension indicator
-        ext = liblte_bits_2_value(&msg_ptr, 1);
+        //MeasurementReport
+        liblte_value_2_bits(0, &msg_ptr, 1); //critical extensions
+        liblte_value_2_bits(0, &msg_ptr, 3); //c1
 
-        // C1 choice.
-        meas_report->meas_result_type = (LIBLTE_RRC_MEASUREMENT_REPORT_C1_ENUM)liblte_bits_2_value(&msg_ptr, 3);
+        //MeasurementReport-r8-IEs
+        liblte_value_2_bits(0, &msg_ptr, 1); //non-critical extensions
 
-        // Is a SPARE7 > SPARE1 field? Not handled now...
-        if(meas_report->meas_result_type != LIBLTE_RRC_MEASUREMENT_REPORT_C1_R8) {
-        	liblte_rrc_log_print("MeasurementResult type not supported\n");
-        	return err;
+        //MeasResults
+        liblte_value_2_bits(0, &msg_ptr, 1); //ext
+        liblte_value_2_bits(meas_report->have_meas_result_neigh_cells, &msg_ptr, 1);
+        liblte_rrc_pack_meas_id_ie(meas_report->meas_id, &msg_ptr);
+        liblte_rrc_pack_rsrp_range_ie(meas_report->pcell_rsrp_result, &msg_ptr);
+        liblte_rrc_pack_rsrq_range_ie(meas_report->pcell_rsrq_result, &msg_ptr);
+        if(meas_report->have_meas_result_neigh_cells) {
+          liblte_value_2_bits(0, &msg_ptr, 1); //choice from before extension marker
+          liblte_value_2_bits(meas_report->meas_result_neigh_cells_choice, &msg_ptr, 2);
+          if(meas_report->meas_result_neigh_cells_choice != LIBLTE_RRC_MEAS_RESULT_LIST_EUTRA) {
+            printf("NOT HANDLING %s\n", liblte_rrc_meas_reult_neigh_cells_text[meas_report->meas_result_neigh_cells_choice]);
+          } else {
+            //MeasResultListEUTRA
+            liblte_value_2_bits(meas_report->meas_result_neigh_cells.eutra.n_result-1, &msg_ptr, 3);
+            for(uint32 i=0; i<meas_report->meas_result_neigh_cells.eutra.n_result; i++) {
+              liblte_rrc_pack_meas_result_eutra_ie(&meas_report->meas_result_neigh_cells.eutra.result_eutra_list[i], &msg_ptr);
+            }
+          }
         }
 
-        return liblte_rrc_unpack_meas_result_msg(&msg_ptr, &meas_report->meas_results);
+        // Fill in the number of bits used
+        msg->N_bits = msg_ptr - msg->msg;
+
+        err = LIBLTE_SUCCESS;
     }
 
-    return err;
+    return(err);
+}
+LIBLTE_ERROR_ENUM liblte_rrc_unpack_measurement_report_msg(LIBLTE_BIT_MSG_STRUCT                *msg,
+                                                           LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *meas_report)
+{
+    LIBLTE_ERROR_ENUM err = LIBLTE_ERROR_INVALID_INPUTS;
+    uint8             *msg_ptr = msg->msg;
+
+    if(msg      != NULL &&
+       meas_report != NULL)
+    {
+        //MeasurementReport
+        bool crit_ext = liblte_bits_2_value(&msg_ptr, 1); //critical extensions
+        liblte_bits_2_value(&msg_ptr, 3); //c1
+
+        //MeasurementReport-r8-IEs
+        bool non_crit_ext = liblte_bits_2_value(&msg_ptr, 1); //non-critical extensions
+
+        //MeasResults
+        bool ext = liblte_bits_2_value(&msg_ptr, 1);
+        meas_report->have_meas_result_neigh_cells = liblte_bits_2_value(&msg_ptr, 1);
+        liblte_rrc_unpack_meas_id_ie(&msg_ptr, &meas_report->meas_id);
+        liblte_rrc_unpack_rsrp_range_ie(&msg_ptr, &meas_report->pcell_rsrp_result);
+        liblte_rrc_unpack_rsrq_range_ie(&msg_ptr, &meas_report->pcell_rsrq_result);
+        if(meas_report->have_meas_result_neigh_cells) {
+          liblte_bits_2_value(&msg_ptr, 1); //choice from before extension marker
+          meas_report->meas_result_neigh_cells_choice = (LIBLTE_RRC_MEAS_RESULT_NEIGH_CELLS_ENUM) liblte_bits_2_value(&msg_ptr, 2);
+          if(meas_report->meas_result_neigh_cells_choice != LIBLTE_RRC_MEAS_RESULT_LIST_EUTRA) {
+            printf("NOT HANDLING %s\n", liblte_rrc_meas_reult_neigh_cells_text[meas_report->meas_result_neigh_cells_choice]);
+          } else {
+            //MeasResultListEUTRA
+            meas_report->meas_result_neigh_cells.eutra.n_result = liblte_bits_2_value(&msg_ptr, 3) + 1;
+            for(uint32 i=0; i<meas_report->meas_result_neigh_cells.eutra.n_result; i++) {
+              liblte_rrc_unpack_meas_result_eutra_ie(&msg_ptr, &meas_report->meas_result_neigh_cells.eutra.result_eutra_list[i]);
+            }
+          }
+        }
+
+        //skip extensions
+        liblte_rrc_consume_noncrit_extension(crit_ext, __func__, &msg_ptr);
+        liblte_rrc_consume_noncrit_extension(non_crit_ext, __func__, &msg_ptr);
+        liblte_rrc_consume_noncrit_extension(ext, __func__, &msg_ptr);
+
+        err = LIBLTE_SUCCESS;
+    }
+
+    return(err);
 }
 
 /*********************************************************************
@@ -13688,9 +13787,8 @@ LIBLTE_ERROR_ENUM liblte_rrc_pack_ul_dcch_msg(LIBLTE_RRC_UL_DCCH_MSG_STRUCT *ul_
             err = liblte_rrc_pack_csfb_parameters_request_cdma2000_msg((LIBLTE_RRC_CSFB_PARAMETERS_REQUEST_CDMA2000_STRUCT *)&ul_dcch_msg->msg,
                                                                        &global_msg);
         }else if(LIBLTE_RRC_UL_DCCH_MSG_TYPE_MEASUREMENT_REPORT == ul_dcch_msg->msg_type){
-            printf("NOT HANDLING MEASUREMENT REPORT\n");
-//            err = liblte_rrc_pack_measurement_report_msg((LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *)&ul_dcch_msg->msg,
-//                                                         &global_msg);
+            err = liblte_rrc_pack_measurement_report_msg((LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *)&ul_dcch_msg->msg,
+                                                         &global_msg);
         }else if(LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_RECONFIG_COMPLETE == ul_dcch_msg->msg_type){
             err = liblte_rrc_pack_rrc_connection_reconfiguration_complete_msg((LIBLTE_RRC_CONNECTION_RECONFIGURATION_COMPLETE_STRUCT *)&ul_dcch_msg->msg,
                                                                               &global_msg);
@@ -13768,8 +13866,8 @@ LIBLTE_ERROR_ENUM liblte_rrc_unpack_ul_dcch_msg(LIBLTE_BIT_MSG_STRUCT         *m
             err = liblte_rrc_unpack_csfb_parameters_request_cdma2000_msg(&global_msg,
                                                                          (LIBLTE_RRC_CSFB_PARAMETERS_REQUEST_CDMA2000_STRUCT *)&ul_dcch_msg->msg);
         }else if(LIBLTE_RRC_UL_DCCH_MSG_TYPE_MEASUREMENT_REPORT == ul_dcch_msg->msg_type){
-            err = liblte_rrc_unpack_meas_report_msg(&global_msg,
-                                                    (LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *)&ul_dcch_msg->msg);
+            err = liblte_rrc_unpack_measurement_report_msg(&global_msg,
+                                                           (LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT *)&ul_dcch_msg->msg);
         }else if(LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_RECONFIG_COMPLETE == ul_dcch_msg->msg_type){
             err = liblte_rrc_unpack_rrc_connection_reconfiguration_complete_msg(&global_msg,
                                                                                 (LIBLTE_RRC_CONNECTION_RECONFIGURATION_COMPLETE_STRUCT *)&ul_dcch_msg->msg);

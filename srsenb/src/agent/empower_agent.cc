@@ -51,28 +51,24 @@
 
 #define EMPOWER_AGENT_BUF_SMALL_SIZE          2048
 
-#define Error(fmt, ...)                       \
-  do {                                        \
-    m_logger->error_line(                     \
-      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+#define Error(fmt, ...)                             \
+  do {                                              \
+    m_logger->error("AGENT: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
-#define Warning(fmt, ...)                     \
-  do {                                        \
-    m_logger->warning_line(                   \
-      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+#define Warning(fmt, ...)                           \
+  do {                                              \
+    m_logger->warning("AGENT: "fmt, ##__VA_ARGS__); \
   } while(0)
 
-#define Info(fmt, ...)                        \
-  do {                                        \
-    m_logger->info_line(                      \
-      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+#define Info(fmt, ...)                              \
+  do {                                              \
+    m_logger->info("AGENT: "fmt, ##__VA_ARGS__);    \
   } while(0)
 
-#define Debug(fmt, ...)                       \
-  do {                                        \
-    m_logger->debug_line(                     \
-      __FILE__, __LINE__, fmt, ##__VA_ARGS__);\
+#define Debug(fmt, ...)                             \
+  do {                                              \
+    m_logger->debug("AGENT: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
 #define RSRP_RANGE_TO_VALUE(x)	((float)x - 140.0f)
@@ -720,39 +716,45 @@ void empower_agent::report_RRC_measure(
 {
   int i;
   int j;
-  int nof_cells = report->meas_results.n_of_neigh_cells;
+  int nof_cells = 0;
 
   LIBLTE_RRC_MEAS_RESULT_EUTRA_STRUCT * cells;
 
+  if (report->have_meas_result_neigh_cells && 
+    report->meas_result_neigh_cells_choice == LIBLTE_RRC_MEAS_RESULT_LIST_EUTRA) {
+
+    nof_cells = report->meas_result_neigh_cells.eutra.n_result;
+  }
+
   for(i = 0; i < EMPOWER_AGENT_MAX_MEAS; i++) {
-    if(m_ues[rnti]->m_meas[i].meas_id == report->meas_results.meas_id) {
+    if(m_ues[rnti]->m_meas[i].meas_id == report->meas_id) {
       break;
     }
   }
 
   /* NOTE: Should we try to revoke the measure if is not managed? */
   if(i == EMPOWER_AGENT_MAX_MEAS) {
-    Error("Measure %d of RNTI %x not found! Index=%d\n", report->meas_results.meas_id, rnti, i);
+    Error("Measure %d of RNTI %x not found! Index=%d\n", report->meas_id, rnti, i);
     return;
   }
 
   if(m_ues.count(rnti) != 0) {
     Debug("Saving received RRC measure %d from user %x\n", m_ues[rnti]->m_meas[i].id, rnti);
 
-    m_ues[rnti]->m_meas[i].carrier.rsrp = report->meas_results.meas_result_pcell.rsrp_range;
-    m_ues[rnti]->m_meas[i].carrier.rsrq = report->meas_results.meas_result_pcell.rsrq_range;
+    m_ues[rnti]->m_meas[i].carrier.rsrp = report->pcell_rsrp_result;
+    m_ues[rnti]->m_meas[i].carrier.rsrq = report->pcell_rsrq_result;
     m_ues[rnti]->m_meas[i].c_dirty      = 1;
 
     if(nof_cells == 0) {
       return;
     }
 
-    cells = report->meas_results.neigh_cells_EUTRA;
+    cells = report->meas_result_neigh_cells.eutra.result_eutra_list;
 
     for(j = 0; j < nof_cells && j < EMPOWER_AGENT_MAX_CELL_MEAS; j++) {
-      m_ues[rnti]->m_meas[i].neigh[j].pci  = cells[j].pci;
-      m_ues[rnti]->m_meas[i].neigh[j].rsrp = cells[j].rsrp_range;
-      m_ues[rnti]->m_meas[i].neigh[j].rsrq = cells[j].rsrq_range;
+      m_ues[rnti]->m_meas[i].neigh[j].pci  = cells[j].phys_cell_id;
+      m_ues[rnti]->m_meas[i].neigh[j].rsrp = cells[j].meas_result.rsrp_result;
+      m_ues[rnti]->m_meas[i].neigh[j].rsrq = cells[j].meas_result.rsrq_result;
       m_ues[rnti]->m_meas[i].neigh[j].dirty= 1;
     }
   }
