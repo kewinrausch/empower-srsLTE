@@ -22,7 +22,7 @@
 # Options
 ########################################################################
 
-option(ENABLE_EMPOWER_AGENT  "Enable the use of EmPOWER Agent"     OFF)
+option(ENABLE_EMPOWER_AGENT  "Enable the use of EmPOWER Agent"     ON)
 
 if(ENABLE_EMPOWER_AGENT)
   message(STATUS "Building srsENB with EmPOWER Agent.")
