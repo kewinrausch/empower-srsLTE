@@ -116,6 +116,8 @@ void sched_ue::reset()
   dl_pmi = 0;
   dl_pmi_tti = 0;
   cqi_request_tti = 0;
+  dl_mcs = 0;
+  ul_mcs = 0;
   for (int i=0;i<SCHED_MAX_HARQ_PROC;i++) {
     for(uint32_t tb = 0; tb < SRSLTE_MAX_TB; tb++) {
       dl_harq[i].reset(tb);
@@ -666,6 +668,14 @@ uint32_t sched_ue::get_max_retx() {
   return cfg.maxharq_tx; 
 }
 
+int sched_ue::get_dl_mcs() {
+  return dl_mcs;
+}
+
+int sched_ue::get_ul_mcs() {
+  return ul_mcs;
+}
+
 bool sched_ue::is_first_dl_tx()
 {
   for (int i=0;i<SCHED_MAX_HARQ_PROC;i++) {
@@ -762,8 +772,10 @@ uint32_t sched_ue::get_required_prb_dl(uint32_t req_bytes, uint32_t nof_ctrl_sym
     nof_re = srslte_ra_dl_approx_nof_re(cell, n, nof_ctrl_symbols);
     if (fixed_mcs_dl < 0) {
       tbs = alloc_tbs_dl(n, nof_re, 0, &mcs);
+      dl_mcs = mcs;
     } else {
       tbs = srslte_ra_tbs_from_idx(srslte_ra_tbs_idx_from_mcs(fixed_mcs_dl), n)/8;
+      dl_mcs = fixed_mcs_dl;
     }
     if (tbs > 0) {
       nbytes = tbs; 
@@ -791,8 +803,10 @@ uint32_t sched_ue::get_required_prb_ul(uint32_t req_bytes)
     int tbs = 0; 
     if (fixed_mcs_ul < 0) {
       tbs = alloc_tbs_ul(n, nof_re, 0, &mcs);
+      ul_mcs = mcs;
     } else {
       tbs = srslte_ra_tbs_from_idx(srslte_ra_tbs_idx_from_mcs(fixed_mcs_ul), n)/8;
+      ul_mcs = fixed_mcs_ul;
     }
     if (tbs > 0) {
       nbytes = tbs; 

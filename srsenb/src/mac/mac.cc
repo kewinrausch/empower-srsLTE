@@ -79,9 +79,14 @@ bool mac::init(mac_args_t *args_, srslte_cell_t *cell_, phy_interface_mac *phy, 
     memcpy(&cell, cell_, sizeof(srslte_cell_t));
     
     scheduler.init(rrc, agent, log_h);
-    // Set default scheduler (RR)
+
+#ifdef HAVE_RAN_SCHED
+    scheduler.set_metric(&sched_metric_dl_ran, &sched_metric_ul_ran);
+    sched_metric_dl_ran.init(log_h);
+#else /* HAVE_RAN_SCHED */
     scheduler.set_metric(&sched_metric_dl_rr, &sched_metric_ul_rr);
-    
+#endif /* HAVE_RAN_SCHED */
+
     // Set default scheduler configuration 
     scheduler.set_sched_cfg(&args.sched);
     

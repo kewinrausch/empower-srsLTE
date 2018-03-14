@@ -38,8 +38,13 @@
 #include "srslte/common/mac_pcap.h"
 #include "mac/scheduler.h"
 #include "mac/scheduler_metric.h"
+#include "mac/scheduler_metric.h"
 #include "srslte/interfaces/enb_metrics_interface.h"
 #include "mac/ue.h"
+
+#ifdef HAVE_RAN_SCHED
+#include "mac/scheduler_RAN.h"
+#endif
 
 namespace srsenb {
   
@@ -140,8 +145,14 @@ private:
 
   /* Scheduler unit */
   sched            scheduler; 
+#if HAVE_RAN_SCHED
+  /* I keep the same name to preserve any reference around */
+  dl_metric_ran    sched_metric_dl_ran;
+  ul_metric_ran    sched_metric_ul_ran;
+#else /* HAVE_RAN_SCHED */
   dl_metric_rr     sched_metric_dl_rr;
   ul_metric_rr     sched_metric_ul_rr;
+#endif /* HAVE_RAN_SCHED */
 
   /* Map of active UEs */
   std::map<uint16_t, ue*> ue_db;   

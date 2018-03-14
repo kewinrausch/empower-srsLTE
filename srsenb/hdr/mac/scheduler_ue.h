@@ -121,6 +121,9 @@ public:
   bool       needs_cqi(uint32_t tti, bool will_send = false); 
   uint32_t   get_max_retx(); 
   
+  int        get_dl_mcs();
+  int        get_ul_mcs();
+
   bool       get_pucch_sched(uint32_t current_tti, uint32_t prb_idx[2]);
   bool       pucch_sr_collision(uint32_t current_tti, uint32_t n_cce);
 
@@ -175,6 +178,8 @@ private:
   uint32_t max_mcs_ul; 
   int      fixed_mcs_ul; 
   int      fixed_mcs_dl; 
+  int      dl_mcs;
+  int      ul_mcs;
 
   int next_tpc_pusch;
   int next_tpc_pucch; 
