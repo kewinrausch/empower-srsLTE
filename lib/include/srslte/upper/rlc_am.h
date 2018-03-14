@@ -40,7 +40,7 @@
 
 namespace srslte {
 
-
+#undef RLC_AM_BUFFER_DEBUG
 
 struct rlc_amd_rx_pdu_t{
   rlc_amd_pdu_header_t  header;
@@ -180,8 +180,8 @@ private:
   int  build_segment(uint8_t *payload, uint32_t nof_bytes, rlc_amd_retx_t retx);
   int  build_data_pdu(uint8_t *payload, uint32_t nof_bytes);
 
-  void handle_data_pdu(uint8_t *payload, uint32_t nof_bytes, rlc_amd_pdu_header_t header);
-  void handle_data_pdu_segment(uint8_t *payload, uint32_t nof_bytes, rlc_amd_pdu_header_t header);
+  void handle_data_pdu(uint8_t *payload, uint32_t nof_bytes, rlc_amd_pdu_header_t &header);
+  void handle_data_pdu_segment(uint8_t *payload, uint32_t nof_bytes, rlc_amd_pdu_header_t &header);
   void handle_control_pdu(uint8_t *payload, uint32_t nof_bytes);
 
   void reassemble_rx_sdus();
@@ -189,6 +189,7 @@ private:
   bool inside_tx_window(uint16_t sn);
   bool inside_rx_window(uint16_t sn);
   void debug_state();
+  void print_rx_segments();
 
   bool add_segment_and_check(rlc_amd_rx_pdu_segments_t *pdu, rlc_amd_rx_pdu_t *segment);
   int  required_buffer_size(rlc_amd_retx_t retx);

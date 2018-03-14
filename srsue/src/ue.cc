@@ -81,6 +81,7 @@ bool ue::init(all_args_t *args_)
 
   // Init logs
   rf_log.set_level(srslte::LOG_LEVEL_INFO);
+  rf_log.info("Starting UE\n");
   for (int i=0;i<args->expert.phy.nof_phy_threads;i++) {
     ((srslte::log_filter*) phy_log[i])->set_level(level(args->log.phy_level));
   }
@@ -195,7 +196,8 @@ bool ue::init(all_args_t *args_)
   pdcp.init(&rlc, &rrc, &gw, &pdcp_log, 0 /* RB_ID_SRB0 */, SECURITY_DIRECTION_UPLINK);
 
   usim.init(&args->usim, &usim_log);
-  nas.init(&usim, &rrc, &gw, &nas_log, 1 /* RB_ID_SRB1 */);
+  srslte_nas_config_t nas_cfg(1, args->apn); /* RB_ID_SRB1 */
+  nas.init(&usim, &rrc, &gw, &nas_log, nas_cfg);
   gw.init(&pdcp, &nas, &gw_log, 3 /* RB_ID_DRB1 */);
 
   gw.set_netmask(args->expert.ip_netmask);
@@ -296,10 +298,17 @@ bool ue::get_metrics(ue_metrics_t &m)
   return false;
 }
 
+void ue::radio_overflow() {
+  phy.radio_overflow();
+}
+
 void ue::rf_msg(srslte_rf_error_t error)
 {
   ue_base *ue = ue_base::get_instance(LTE);
   ue->handle_rf_msg(error);
+  if(error.type == srslte_rf_error_t::SRSLTE_RF_ERROR_OVERFLOW) {
+    ue->radio_overflow();
+  }
 }
 
 } // namespace srsue

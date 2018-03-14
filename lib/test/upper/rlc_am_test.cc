@@ -54,7 +54,10 @@ class rlc_am_tester
     ,public rrc_interface_rlc
 {
 public:
-  rlc_am_tester(){n_sdus = 0;}
+  rlc_am_tester(){
+    bzero(sdus, sizeof(sdus));
+    n_sdus = 0;
+  }
 
   // PDCP interface
   void write_pdu(uint32_t lcid, byte_buffer_t *sdu)
@@ -479,7 +482,7 @@ void resegment_test_1()
 
   // Read the retx PDU from RLC1 and force resegmentation
   byte_buffer_t retx1;
-  len = rlc1.read_pdu(retx1.msg, 9); // 4 byte header + 5 data
+  len = rlc1.read_pdu(retx1.msg, 11); // 4 byte header + 5 data
   retx1.N_bytes = len;
 
   // Write the retx PDU to RLC2
@@ -489,7 +492,7 @@ void resegment_test_1()
 
   // Read the remaining segment
   byte_buffer_t retx2;
-  len = rlc1.read_pdu(retx2.msg, 9); // 4 byte header + 5 data
+  len = rlc1.read_pdu(retx2.msg, 11); // 4 byte header + 5 data
   retx2.N_bytes = len;
 
   // Write the retx PDU to RLC2
@@ -588,7 +591,7 @@ void resegment_test_2()
 
   // Read the retx PDU from RLC1 and force resegmentation
   byte_buffer_t retx1;
-  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 16); // 6 byte header + 10 data
+  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 18); // 6 byte header + 10 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx1.msg, retx1.N_bytes);
@@ -597,7 +600,7 @@ void resegment_test_2()
 
   // Read the remaining segment
   byte_buffer_t retx2;
-  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 16); // 6 byte header + 10 data
+  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 18); // 6 byte header + 10 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx2.msg, retx2.N_bytes);
@@ -693,14 +696,14 @@ void resegment_test_3()
 
   // Read the retx PDU from RLC1 and force resegmentation
   byte_buffer_t retx1;
-  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 14); // 4 byte header + 10 data
+  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 16); // 4 byte header + 10 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx1.msg, retx1.N_bytes);
 
   // Read the remaining segment
   byte_buffer_t retx2;
-  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 14); // 4 byte header + 10 data
+  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 16); // 4 byte header + 10 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx2.msg, retx2.N_bytes);
@@ -796,14 +799,14 @@ void resegment_test_4()
 
   // Read the retx PDU from RLC1 and force resegmentation
   byte_buffer_t retx1;
-  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 21); // 6 byte header + 15 data
+  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 23); // 6 byte header + 15 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx1.msg, retx1.N_bytes);
 
   // Read the remaining segment
   byte_buffer_t retx2;
-  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 21); // 6 byte header + 15 data
+  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 23); // 6 byte header + 15 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx2.msg, retx2.N_bytes);
@@ -899,14 +902,14 @@ void resegment_test_5()
 
   // Read the retx PDU from RLC1 and force resegmentation
   byte_buffer_t retx1;
-  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 27); // 7 byte header + 20 data
+  retx1.N_bytes = rlc1.read_pdu(retx1.msg, 29); // 7 byte header + 20 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx1.msg, retx1.N_bytes);
 
   // Read the remaining segment
   byte_buffer_t retx2;
-  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 27); // 7 byte header + 20 data
+  retx2.N_bytes = rlc1.read_pdu(retx2.msg, 29); // 7 byte header + 20 data
 
   // Write the retx PDU to RLC2
   rlc2.write_pdu(retx2.msg, retx2.N_bytes);
@@ -1014,7 +1017,7 @@ void resegment_test_6()
 
   // Read the retx PDU from RLC1 and force resegmentation
   byte_buffer_t retx1;
-  len = rlc1.read_pdu(retx1.msg, 127);
+  len = rlc1.read_pdu(retx1.msg, 129);
   retx1.N_bytes = len;
 
   // Write the retx PDU to RLC2
@@ -1024,7 +1027,7 @@ void resegment_test_6()
 
   // Read the remaining segment
   byte_buffer_t retx2;
-  len = rlc1.read_pdu(retx2.msg, 157);
+  len = rlc1.read_pdu(retx2.msg, 159);
   retx2.N_bytes = len;
 
   // Write the retx PDU to RLC2

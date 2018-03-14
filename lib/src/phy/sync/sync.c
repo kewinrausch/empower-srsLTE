@@ -71,7 +71,7 @@ int srslte_sync_init_decim(srslte_sync_t *q, uint32_t frame_size, uint32_t max_o
     q->N_id_1 = 1000;
 
     q->cfo_ema_alpha = CFO_EMA_ALPHA;
-    q->sss_alg = SSS_FULL;
+    q->sss_alg = SSS_PARTIAL_3;
 
     q->detect_cp       = true;
     q->sss_en          = true;
@@ -178,7 +178,6 @@ int srslte_sync_resize(srslte_sync_t *q, uint32_t frame_size, uint32_t max_offse
   int ret = SRSLTE_ERROR_INVALID_INPUTS;
 
   if (q                 != NULL         &&
-      frame_size        <= 307200       &&
       fft_size_isvalid(fft_size))
   {
     if (frame_size > q->max_frame_size) {

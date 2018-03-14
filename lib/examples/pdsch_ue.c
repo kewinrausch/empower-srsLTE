@@ -162,8 +162,8 @@ void usage(prog_args_t *args, char *prog) {
   printf("\t-r RNTI in Hex [Default 0x%x]\n",args->rnti);
   printf("\t-l Force N_id_2 [Default best]\n");
   printf("\t-C Disable CFO correction [Default %s]\n", args->disable_cfo?"Disabled":"Enabled");
-  printf("\t-F Enable RS-based CFO correction [Default %s]\n", args->enable_cfo_ref?"Disabled":"Enabled");
-  printf("\t-R Average channel estimates on 1 ms [Default %s]\n", args->average_subframe?"Disabled":"Enabled");
+  printf("\t-F Enable RS-based CFO correction [Default %s]\n", !args->enable_cfo_ref?"Disabled":"Enabled");
+  printf("\t-R Average channel estimates on 1 ms [Default %s]\n", !args->average_subframe?"Disabled":"Enabled");
   printf("\t-t Add time offset [Default %d]\n", args->time_offset);
 #ifndef DISABLE_GRAPHICS
   printf("\t-d disable plots [Default enabled]\n");
@@ -473,7 +473,7 @@ int main(int argc, char **argv) {
       exit(-1);
     }
 
-    INFO("Stopping RF and flushing buffer...\r",0);
+    INFO("Stopping RF and flushing buffer...\r");
   }
 #endif
   
@@ -606,7 +606,7 @@ int main(int argc, char **argv) {
   
   srslte_pbch_decode_reset(&ue_mib.pbch);
             
-  INFO("\nEntering main loop...\n\n", 0);
+  INFO("\nEntering main loop...\n\n");
   /* Main loop */
   while (!go_exit && (sf_cnt < prog_args.nof_subframes || prog_args.nof_subframes == -1)) {
     bool acks [SRSLTE_MAX_CODEWORDS] = {false};
@@ -803,6 +803,7 @@ int main(int argc, char **argv) {
             PRINT_LINE("   nof layers: %d", ue_dl.pdsch_cfg.nof_layers);
             PRINT_LINE("nof codewords: %d", SRSLTE_RA_DL_GRANT_NOF_TB(&ue_dl.pdsch_cfg.grant));
             PRINT_LINE("          CFO: %+7.2f Hz", srslte_ue_sync_get_cfo(&ue_sync));
+            PRINT_LINE("         RSRP: %+5.1f dBm | %+5.1f dBm", 10 * log10(rsrp0), 10 * log10(rsrp1));
             PRINT_LINE("          SNR: %+5.1f dB | %+5.1f dB", 10 * log10(rsrp0 / noise), 10 * log10(rsrp1 / noise));
             PRINT_LINE("           Rb: %6.2f / %6.2f / %6.2f Mbps (net/maximum/processing)", uerate, enodebrate, procrate);
             PRINT_LINE("   PDCCH-Miss: %5.2f%%", 100 * (1 - (float) ue_dl.nof_detected / nof_trials));
@@ -1028,7 +1029,7 @@ void *plot_thread_run(void *arg) {
         
       }
       
-      plot_scatter_setNewData(&pscatequal_pdcch, ue_dl.pdcch.d, 36*ue_dl.pdcch.nof_cce);
+      plot_scatter_setNewData(&pscatequal_pdcch, ue_dl.pdcch.d, 36*ue_dl.pdcch.nof_cce[0]);
     }
     
     plot_scatter_setNewData(&pscatequal, ue_dl.pdsch.d[0], nof_symbols);

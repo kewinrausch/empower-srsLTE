@@ -193,9 +193,9 @@ void nas::notify_connection_setup() {
 }
 
 void nas::write_pdu(uint32_t lcid, byte_buffer_t *pdu) {
-  uint8 pd;
-  uint8 msg_type;
-  uint8 sec_hdr_type;
+  uint8 pd = 0;
+  uint8 msg_type = 0;
+  uint8 sec_hdr_type = 0;
   bool  mac_valid = false;
 
   nas_log->info_hex(pdu->msg, pdu->N_bytes, "DL %s PDU", rrc->get_rb_name(lcid).c_str());
@@ -216,7 +216,7 @@ void nas::write_pdu(uint32_t lcid, byte_buffer_t *pdu) {
     case LIBLTE_MME_SECURITY_HDR_TYPE_INTEGRITY_AND_CIPHERED_WITH_NEW_EPS_SECURITY_CONTEXT:
         break;
     default:
-      nas_log->error("Not handling NAS message with SEC_HDR_TYPE=%02X\n",msg_type);
+      nas_log->error("Not handling NAS message with SEC_HDR_TYPE=%02X\n", sec_hdr_type);
       pool->deallocate(pdu);
       break;
   }
@@ -665,6 +665,11 @@ void nas::parse_identity_request(uint32_t lcid, byte_buffer_t *pdu) {
 
   pdu->reset();
   liblte_mme_pack_identity_response_msg(&id_resp, (LIBLTE_BYTE_MSG_STRUCT *) pdu);
+
+  if(pcap != NULL) {
+    pcap->write_nas(pdu->msg, pdu->N_bytes);
+  }
+
   rrc->write_sdu(lcid, pdu);
 }
 
@@ -884,7 +889,14 @@ void nas::gen_pdn_connectivity_request(LIBLTE_BYTE_MSG_STRUCT *msg) {
 
   // Set the optional flags
   pdn_con_req.esm_info_transfer_flag_present = false; //FIXME: Check if this is needed
-  pdn_con_req.apn_present = false;
+  if (cfg.apn == "") {
+    pdn_con_req.apn_present = false;
+  } else {
+    pdn_con_req.apn_present = true;
+    LIBLTE_MME_ACCESS_POINT_NAME_STRUCT apn;
+    apn.apn = cfg.apn;
+    pdn_con_req.apn = apn;
+  }
   pdn_con_req.protocol_cnfg_opts_present = false;
   pdn_con_req.device_properties_present = false;
 

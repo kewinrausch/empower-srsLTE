@@ -30,6 +30,9 @@
 #include <unistd.h>
 #include <stdio.h>
 
+// Default priority for all threads below UHD threads
+#define DEFAULT_PRIORITY 60
+
 #ifdef __cplusplus
     extern "C" {
 #endif // __cplusplus
@@ -48,7 +51,10 @@
   
 class thread
 {
-public: 
+public:
+  thread() {
+    _thread = 0;
+  }
   bool start(int prio = -1) {
     return threads_new_rt_prio(&_thread, thread_function_entry, this, prio);    
   }

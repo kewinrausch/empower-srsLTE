@@ -150,7 +150,8 @@ int srslte_ra_ul_dci_to_grant_prb_allocation(srslte_ra_ul_dci_t *dci, srslte_ra_
     // starting prb idx for slot 0 is as given by resource grant
     grant->n_prb[0] = n_prb_1;
     if (n_prb_1 < n_rb_ho/2) {
-      fprintf(stderr, "Invalid Frequency Hopping parameters. Offset: %d, n_prb_1: %d\n", n_rb_ho, n_prb_1);
+      INFO("Invalid Frequency Hopping parameters. Offset: %d, n_prb_1: %d\n", n_rb_ho, n_prb_1);
+      return SRSLTE_ERROR;
     }
     uint32_t n_prb_1_tilde = n_prb_1;
 
@@ -555,7 +556,7 @@ static int dl_dci_to_grant_mcs(srslte_ra_dl_dci_t *dci, srslte_ra_dl_grant_t *gr
 }
 
 void srslte_ra_dl_grant_to_nbits(srslte_ra_dl_grant_t *grant, uint32_t cfi, srslte_cell_t cell, uint32_t sf_idx,
-                                 srslte_ra_nbits_t nbits [SRSLTE_MAX_CODEWORDS])
+                                 srslte_ra_nbits_t nbits[SRSLTE_MAX_CODEWORDS])
 {
   // Compute number of RE 
   for (int i = 0; i < SRSLTE_MAX_TB; i++) {

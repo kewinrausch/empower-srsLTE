@@ -145,8 +145,13 @@ public:
 private:
   class ul_harq_process {
   public:
-    ul_harq_process()
-    {
+    ul_harq_process() {
+      pid = 0;
+      harq_feedback = false;
+      log_h = NULL;
+      bzero(&softbuffer, sizeof(srslte_softbuffer_tx_t));
+      is_msg3 = false;
+      pdu_ptr = NULL;
       current_tx_nb = 0;
       current_irv = 0;
       is_initiated = false;
@@ -201,7 +206,7 @@ private:
     {
       if (ack) {
         if (grant) {
-          if (grant->ndi[0] == get_ndi()) {
+          if (grant->ndi[0] == get_ndi() && grant->phy_grant.ul.mcs.tbs != 0) {
             *ack = false;
           }
         }
@@ -210,7 +215,7 @@ private:
 
       // Reset HARQ process if TB has changed
       if (harq_feedback && has_grant() && grant) {
-        if (grant->n_bytes[0] != cur_grant.n_bytes[0] && cur_grant.n_bytes[0] > 0) {
+        if (grant->n_bytes[0] != cur_grant.n_bytes[0] && cur_grant.n_bytes[0] > 0 && grant->n_bytes[0] > 0) {
           Debug("UL %d: Reset due to change of grant size last_grant=%d, new_grant=%d\n",
                pid, cur_grant.n_bytes[0], grant->n_bytes[0]);
           reset();
@@ -219,7 +224,13 @@ private:
 
       // Receive and route HARQ feedbacks
       if (grant) {
-        if ((!(grant->rnti_type == SRSLTE_RNTI_TEMP) && grant->ndi[0] != get_ndi() && harq_feedback) ||
+        if (grant->has_cqi_request && grant->phy_grant.ul.mcs.tbs == 0) {
+          /* Only CQI reporting (without SCH) */
+          memcpy(&action->phy_grant.ul, &grant->phy_grant.ul, sizeof(srslte_ra_ul_grant_t));
+          memcpy(&cur_grant, grant, sizeof(Tgrant));
+          action->tx_enabled = true;
+          action->rnti = grant->rnti;
+        } else if ((!(grant->rnti_type == SRSLTE_RNTI_TEMP) && grant->ndi[0] != get_ndi() && harq_feedback) ||
             (grant->rnti_type == SRSLTE_RNTI_USER && !has_grant())                  ||
              grant->is_from_rar)
         {
@@ -323,7 +334,7 @@ private:
 
       // HARQ entity requests an adaptive transmission
       if (grant) {
-        if (grant->rv) {
+        if (grant->rv[0]) {
           current_irv = irv_of_rv[grant->rv[0]%4];
         }
 
