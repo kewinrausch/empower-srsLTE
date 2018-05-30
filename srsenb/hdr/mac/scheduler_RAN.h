@@ -64,8 +64,6 @@
 #define RAN_TENANT_STARTING     1
 #define RAN_USER_INVALID        0
 
-namespace srsenb {
-
 /* Define/undefine this symbol to trace the RAN */
 #define RAN_TRACE
 
@@ -116,7 +114,19 @@ typedef struct __ran_trace_data {
   rt_stats stats;
 } rt_data;
 
+void ran_trace_tti(rt_data * rtd);
+void ran_trace_DL_mask(rt_data * rtd, uint16_t rnti, uint32_t mask, int mcs);
+
+#define rtrace_new_tti(r)               ran_trace_tti(r)
+#define rtrace_dl_mask(r, n, m, c)      ran_trace_DL_mask(r, n, m, c)
+
+#else
+
+#define rtrace_new_tti(r)               /* ...into nothing */
+#define rtrace_dl_mask(r, n, m, c)      /* ...into nothing */
 #endif /* RAN_TRACE */
+
+namespace srsenb {
 
 /******************************************************************************
  *                                                                            *
@@ -348,34 +358,42 @@ public:
 private:
   uint32_t m_rbg_max;
 
-  /* This delimits which subframes belongs to tenant B. By default tenant A 
-   * starts from subframe 0, and owns resources until switch, where identify 
-   * where tenant B resources starts. Tenant B then owns all the resources until
-   * 'm_win' is hit.
+  /* This delimits which PRB group belongs to tenant B. By default tenant A
+   * starts from PRBG 0, and owns resources until switch, which identify where
+   * tenant B resources starts.
    *
-   * In it's standard setup, this scheduler looks like:
+   * Tenant B then owns all the resources until the end of the spectrum.
    *
-   * Sub-frame   0   1   2   3   4   5   6   7   8   9
-   *           +---+---+---+---+---+---+---+---+---+---+
-   *           | A | A | A | A | A | B | B | B | B | B |
-   *           +---+---+---+---+---+---+---+---+---+---+
+   * Just to have a picture of its behavior in mind:
+   *
+   *          PRBG  0   1   2   3   4   5   6   7   8   9
+   *              +---+---+---+---+---+---+---+---+---+---+
+   * Sub-frame  0 | A | A | A | A | A | B | B | B | B | B |
+   *              +---+---+---+---+---+---+---+---+---+---+
+   *                                    ^
+   *                                    |
+   *                            This is the 'switch'
    *
    * Incrementing the switch allows A to take over B area, decrementing the 
    * switch allows the inverse operation.
    */
   uint32_t m_switch;
-  /* Limit for the incrementing/decrementing the switch operations; this makes
-   * sure that one tenant does not completely eat up another one.
+
+  /* Minimum amount of PRBG that a Tenant is granted to have at any time.
    */
   uint32_t m_limit;
+
   /* Window in number of subframes */
   uint32_t m_win;
+
   /* Tenant A ID */
   uint64_t m_tenA;
   /* Tenant B ID */
   uint64_t m_tenB;
+
   /* Slot for load monitoring */
   uint32_t m_win_slot;
+
   /* Number of PRBG userd by tenant A within window monitoring slot */
   uint32_t m_tenA_rbg;
   /* Number of PRBG userd by tenant B within window monitoring slot */
@@ -460,6 +478,10 @@ private:
   /* Available RBGs for this TTI */
   uint32_t               m_tti_rbg_left;
 
+  /* Maximum number of RBG; this depends on the BW */
+  uint32_t               m_max_rbg;
+  /* size of the RBG */
+  uint32_t               m_rbg_size;
 
   /* Tenant scheduler currently running */
   ran_tenant_scheduler * m_tenant_sched;
@@ -484,7 +506,7 @@ private:
    * EXTREMELY IMPORTANT:
    *
    * For some reason if the class is not big enough boost fail launching an 
-   * exception over an unintialized mutex, so keep this untile the problem is 
+   * exception over an unintialized mutex, so keep this until the problem is
    * solved.
    *
    * There is some serious issue with memory here, but this class does not seem
@@ -515,7 +537,7 @@ private:
   uint32_t count_rbg(uint32_t mask);
 
   /* Fit some RBG in a mask and return the result */
-  bool     new_allocation(
+  int      new_allocation(
     uint32_t nof_rbg, bool rbg_mask[RAN_DL_MAX_RGB], uint32_t * final_mask);
 
 }; /* class dl_metric_ran */
