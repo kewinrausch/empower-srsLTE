@@ -35,11 +35,11 @@
 #include <srslte/interfaces/enb_interfaces.h>
 #include <srslte/radio/radio.h>
 
-#include "phy/phy.h"
-#include "mac/mac.h"
-#include "upper/rrc.h"
-#include "upper/rlc.h"
-#include "upper/pdcp.h"
+#include "srsenb/hdr/phy/phy.h"
+#include "srsenb/hdr/mac/mac.h"
+#include "srsenb/hdr/upper/rrc.h"
+#include "srsenb/hdr/upper/rlc.h"
+#include "srsenb/hdr/upper/pdcp.h"
 
 namespace srsenb {
 

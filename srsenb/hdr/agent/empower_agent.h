@@ -38,7 +38,7 @@
 #include <srslte/common/threads.h>
 
 #include <emage/emproto.h>
-#include "agent/agent.h"
+#include "agent.h"
 
 namespace srsenb {
 

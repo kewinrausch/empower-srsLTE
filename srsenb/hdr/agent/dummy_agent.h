@@ -34,7 +34,7 @@
 
 #include <srslte/common/log_filter.h>
 
-#include "agent/agent.h"
+#include "agent.h"
 
 namespace srsenb {
 

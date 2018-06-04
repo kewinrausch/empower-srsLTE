@@ -38,16 +38,14 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <boost/thread/mutex.hpp>
 #include <emage/emage.h>
 #include <emage/emproto.h>
 
 #include "srslte/srslte.h"
 #include "srslte/asn1/liblte_rrc.h"
 
-#include "enb.h"
-
-#include "agent/empower_agent.h"
+#include "srsenb/hdr/enb.h"
+#include "srsenb/hdr/agent/empower_agent.h"
 
 #define EMPOWER_AGENT_BUF_SMALL_SIZE          2048
 

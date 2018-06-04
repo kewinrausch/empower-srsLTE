@@ -28,9 +28,9 @@
 #include "srsenb/hdr/enb.h"
 
 #ifdef HAVE_EMPOWER_AGENT
-#include "agent/empower_agent.h"
+#include "srsenb/hdr/agent/empower_agent.h"
 #else  /* HAVE_EMPOWER_AGENT */
-#include "agent/dummy_agent.h"
+#include "srsenb/hdr/agent/dummy_agent.h"
 #endif /* HAVE_EMPOWER_AGENT */
 
 namespace srsenb {
