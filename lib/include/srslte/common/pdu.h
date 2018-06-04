@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef MACPDU_H
-#define MACPDU_H
+#ifndef SRSLTE_PDU_H
+#define SRSLTE_PDU_H
 
 #include <stdint.h>
 #include "srslte/common/log.h"
@@ -133,11 +133,15 @@ public:
   // Section 6.1.2
   void parse_packet(uint8_t *ptr) {
     uint8_t *init_ptr = ptr; 
-    nof_subheaders = 0; 
-    while(subheaders[nof_subheaders].read_subheader(&ptr)) {
-      nof_subheaders++;
-    }
-    nof_subheaders++;
+    nof_subheaders = 0;
+    bool ret = false;
+    do {
+      if (nof_subheaders < (int)max_subheaders) {
+        ret = subheaders[nof_subheaders].read_subheader(&ptr);
+        nof_subheaders++;
+      }
+    } while (ret && (nof_subheaders + 1) < (int)max_subheaders);
+
     for (int i=0;i<nof_subheaders;i++) {
       subheaders[i].read_payload(&ptr);
     }
@@ -254,7 +258,7 @@ public:
 private: 
   static const int MAX_CE_PAYLOAD_LEN = 8; 
   uint32_t lcid;
-  int      nof_bytes; 
+  uint32_t nof_bytes; 
   uint8_t* payload; 
   uint8_t  w_payload_ce[8];
   bool     F_bit;    
@@ -334,6 +338,6 @@ private:
   uint8_t    backoff_indicator; 
 };
 
-} // namespace srsue
+} // namespace srslte
 
-#endif // MACPDU_H
+#endif // SRSLTE_PDU_H

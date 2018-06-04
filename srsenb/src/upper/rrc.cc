@@ -26,10 +26,9 @@
 
 #include "srslte/interfaces/sched_interface.h"
 #include "srslte/asn1/liblte_rrc.h"
-#include "upper/rrc.h"
+#include "srsenb/hdr/upper/rrc.h"
 #include "srslte/srslte.h"
 #include "srslte/asn1/liblte_mme.h"
-#include "upper/rrc.h"
 
 using srslte::byte_buffer_t;
 using srslte::bit_buffer_t;
@@ -132,16 +131,16 @@ uint32_t rrc::generate_sibs()
   memcpy(&msg[0].sibs[0], &cfg.sibs[0], sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_STRUCT));
 
   // Copy rest of SIBs
-  for (uint32_t sched_info_elem = 0; sched_info_elem < nof_messages; sched_info_elem++) {
-    uint32_t msg_index = sched_info_elem + 1; // first msg is SIB1, therefore start with second
+  // first msg is SIB1, therefore start with second
+  for (uint32_t sched_info_elem = 1; sched_info_elem < nof_messages; sched_info_elem++) {
     uint32_t current_msg_element_offset = 0;
 
-    msg[msg_index].N_sibs = 0;
+    msg[sched_info_elem].N_sibs = 0;
 
     // SIB2 always in second SI message
-    if (msg_index == 1) {
-      msg[msg_index].N_sibs++;
-      memcpy(&msg[msg_index].sibs[0], &cfg.sibs[1], sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_STRUCT));
+    if (sched_info_elem == 1) {
+      msg[sched_info_elem].N_sibs++;
+      memcpy(&msg[sched_info_elem].sibs[0], &cfg.sibs[1], sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_STRUCT));
       current_msg_element_offset = 1; // make sure "other SIBs" do not overwrite this SIB2
       // Save SIB2
       memcpy(&sib2, &cfg.sibs[1].sib.sib2, sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUCT));
@@ -151,9 +150,9 @@ uint32_t rrc::generate_sibs()
 
     // Add other SIBs to this message, if any
     for (uint32_t mapping = 0; mapping < sched_info[sched_info_elem].N_sib_mapping_info; mapping++) {
-      msg[msg_index].N_sibs++;
+      msg[sched_info_elem].N_sibs++;
       // current_msg_element_offset skips SIB2 if necessary
-      memcpy(&msg[msg_index].sibs[mapping + current_msg_element_offset],
+      memcpy(&msg[sched_info_elem].sibs[mapping + current_msg_element_offset],
               &cfg.sibs[(int) sched_info[sched_info_elem].sib_mapping_info[mapping].sib_type+2],
               sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_STRUCT));
     }
@@ -230,7 +229,7 @@ void rrc::add_user(uint16_t rnti)
 
     rrc_log->info("Added new user rnti=0x%x\n", rnti);
   } else {
-    rrc_log->error("Adding user rnti=0x%x (already exists)\n");
+    rrc_log->error("Adding user rnti=0x%x (already exists)\n", rnti);
   }
   pthread_mutex_unlock(&user_mutex);
 }
@@ -605,7 +604,7 @@ void rrc::parse_ul_ccch(uint16_t rnti, byte_buffer_t *pdu)
         if (users[rnti].is_idle()) {
           old_rnti = ul_ccch_msg.msg.rrc_con_reest_req.ue_id.c_rnti;
           if (users.count(old_rnti)) {
-            rrc_log->error("Not supported: ConnectionReestablishment. Sending Connection Reject\n", old_rnti);
+            rrc_log->error("Not supported: ConnectionReestablishment for rnti=0x%x. Sending Connection Reject\n", old_rnti);
             users[rnti].send_connection_reest_rej();
             rem_user_thread(old_rnti);
           } else {
@@ -670,7 +669,7 @@ void rrc::run_thread()
           pthread_mutex_lock(&user_mutex);
           break;
         default:
-          rrc_log->error("Rx PDU with invalid bearer id: %s", p.lcid);
+          rrc_log->error("Rx PDU with invalid bearer id: %d", p.lcid);
           break;
       }
     } else {
@@ -820,7 +819,7 @@ bool rrc::ue::is_timeout()
     int64_t deadline = deadline_s*1e6  + deadline_us;
     int64_t elapsed  = t[0].tv_sec*1e6 + t[0].tv_usec;
     if (elapsed > deadline && elapsed > 0) {
-      parent->rrc_log->warning("User rnti=0x%x expired %s deadline: %d:%d>%d:%d us\n", 
+      parent->rrc_log->warning("User rnti=0x%x expired %s deadline: %ld:%ld>%d:%d us\n", 
                                 rnti, deadline_str, 
                                 t[0].tv_sec, t[0].tv_usec, 
                                deadline_s, deadline_us);
@@ -988,7 +987,7 @@ void rrc::ue::set_security_capabilities(LIBLTE_S1AP_UESECURITYCAPABILITIES_STRUC
 void rrc::ue::set_security_key(uint8_t* key, uint32_t length)
 {
   memcpy(k_enb, key, length);
-
+  parent->rrc_log->info_hex(k_enb, 32, "Key eNodeB (k_enb)");
   // Select algos (TODO: use security capabilities and config preferences)
   cipher_algo = srslte::CIPHERING_ALGORITHM_ID_EEA0;
   integ_algo  = srslte::INTEGRITY_ALGORITHM_ID_128_EIA1;
@@ -1098,6 +1097,9 @@ void rrc::ue::notify_s1ap_ue_ctxt_setup_complete()
 {
   LIBLTE_S1AP_MESSAGE_INITIALCONTEXTSETUPRESPONSE_STRUCT res;
   res.ext = false;
+  res.E_RABFailedToSetupListCtxtSURes_present = false;
+  res.CriticalityDiagnostics_present = false;
+
   res.E_RABSetupListCtxtSURes.len = 0;
   res.E_RABFailedToSetupListCtxtSURes.len = 0;
 

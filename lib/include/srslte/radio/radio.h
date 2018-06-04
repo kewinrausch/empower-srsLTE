@@ -30,8 +30,8 @@
 #include "srslte/phy/rf/rf.h"
 #include "srslte/common/trace.h"
 
-#ifndef RADIO_H
-#define RADIO_H
+#ifndef SRSLTE_RADIO_H
+#define SRSLTE_RADIO_H
 
 typedef struct {
   float         tx_corr_dc_gain;
@@ -72,6 +72,8 @@ namespace srslte {
         trace_enabled           = false; 
         tti                     = 0; 
         agc_enabled             = false;
+        radio_is_streaming      = false;
+        is_initialized          = false;
       };
       
       bool init(char *args = NULL, char *devname = NULL, uint32_t nof_channels = 1);
@@ -119,12 +121,12 @@ namespace srslte {
       
       void start_trace();
       void write_trace(std::string filename);
-      void start_rx(bool now = false);
-      void stop_rx();
-      
+
       void set_tti(uint32_t tti);
 
       bool is_first_of_burst();
+
+      bool is_init();
 
       void register_error_handler(srslte_rf_error_handler_t h);
       
@@ -168,6 +170,9 @@ namespace srslte {
       uint32_t tti;
       bool agc_enabled;
 
+      bool is_initialized = true;;
+      bool radio_is_streaming;
+
       uint32_t saved_nof_channels;
       char saved_args[128];
       char saved_devname[128];
@@ -175,4 +180,4 @@ namespace srslte {
   }; 
 }
 
-#endif
+#endif // SRSLTE_RADIO_H

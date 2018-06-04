@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef RLC_UM_H
-#define RLC_UM_H
+#ifndef SRSLTE_RLC_UM_H
+#define SRSLTE_RLC_UM_H
 
 #include "srslte/common/buffer_pool.h"
 #include "srslte/common/log.h"
@@ -50,6 +50,7 @@ class rlc_um
 {
 public:
   rlc_um();
+  ~rlc_um();
 
   void init(log          *rlc_entity_log_,
             uint32_t              lcid_,
@@ -152,4 +153,4 @@ bool        rlc_um_end_aligned(uint8_t fi);
 } // namespace srsue
 
 
-#endif // RLC_UM_H
+#endif // SRSLTE_RLC_UM_H

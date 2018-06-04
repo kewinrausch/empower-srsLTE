@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef ULHARQ_H
-#define ULHARQ_H
+#ifndef SRSUE_UL_HARQ_H
+#define SRSUE_UL_HARQ_H
 
 #define Error(fmt, ...)   log_h->error(fmt, ##__VA_ARGS__)
 #define Warning(fmt, ...) log_h->warning(fmt, ##__VA_ARGS__)
@@ -34,8 +34,8 @@
 
 #include "srslte/interfaces/ue_interfaces.h"
 #include "srslte/common/log.h"
-#include "mac/mux.h"
-#include "mac/ul_sps.h"
+#include "mux.h"
+#include "ul_sps.h"
 #include "srslte/common/mac_pcap.h"
 #include "srslte/common/timers.h"
 #include "srslte/common/interfaces_common.h"
@@ -237,8 +237,8 @@ private:
           // New transmission
           reset();
 
-          // Uplink grant in a RAR
-          if (grant->is_from_rar) {
+          // Uplink grant in a RAR and there is a PDU in the Msg3 buffer
+          if (grant->is_from_rar && harq_entity->mux_unit->msg3_is_pending()) {
             Debug("Getting Msg3 buffer payload, grant size=%d bytes\n", grant->n_bytes[0]);
             pdu_ptr  = harq_entity->mux_unit->msg3_get(payload_buffer, grant->n_bytes[0]);
             if (pdu_ptr) {
@@ -249,6 +249,9 @@ private:
 
             // Normal UL grant
           } else {
+            if (grant->is_from_rar) {
+              grant->rnti = harq_entity->rntis->crnti;
+            }
             // Request a MAC PDU from the Multiplexing & Assemble Unit
             pdu_ptr = harq_entity->mux_unit->pdu_get(payload_buffer, grant->n_bytes[0], tti_tx, pid);
             if (pdu_ptr) {
@@ -268,7 +271,7 @@ private:
         generate_retx(tti_tx, action);
       }
       if (harq_entity->pcap && grant) {
-        if (grant->is_from_rar) {
+        if (grant->is_from_rar && harq_entity->rntis->temp_rnti) {
           grant->rnti = harq_entity->rntis->temp_rnti;
         }
         harq_entity->pcap->write_ul_crnti(pdu_ptr, grant->n_bytes[0], grant->rnti, get_nof_retx(), tti_tx);
@@ -301,7 +304,7 @@ private:
     bool                        is_msg3;
     bool                        is_initiated;    
     uint32_t                    tti_last_tx;
-    
+
     
     const static int payload_buffer_len = 128*1024; 
     uint8_t *payload_buffer;
@@ -426,4 +429,4 @@ private:
 
 } // namespace srsue
 
-#endif // ULHARQ_H
+#endif // SRSUE_UL_HARQ_H

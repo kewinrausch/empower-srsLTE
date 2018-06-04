@@ -33,9 +33,9 @@
 #include <stdint.h>
 #include <signal.h>
 
-#include "mac/proc_ra.h"
-#include "mac/mac.h"
-#include "mac/mux.h"
+#include "srsue/hdr/mac/proc_ra.h"
+#include "srsue/hdr/mac/mac.h"
+#include "srsue/hdr/mac/mux.h"
 
 /* Random access procedure as specified in Section 5.1 of 36.321 */
 
@@ -349,7 +349,8 @@ void ra_proc::tb_decoded_ok() {
         // Preamble selected by Network
         state = COMPLETION; 
       } else {
-        // Preamble selected by UE MAC 
+        // Preamble selected by UE MAC
+        mux_unit->msg3_prepare();
         rntis->temp_rnti = rar_pdu_msg.get()->get_temp_crnti();
         phy_h->pdcch_dl_search(SRSLTE_RNTI_TEMP, rar_pdu_msg.get()->get_temp_crnti());
         
