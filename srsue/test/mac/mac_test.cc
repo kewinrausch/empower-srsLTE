@@ -30,10 +30,10 @@
 
 #include "srslte/asn1/liblte_rrc.h"
 #include "srslte/radio/radio_multi.h"
-#include "phy/phy.h"
+#include "srsue/hdr/phy/phy.h"
 #include "srslte/interfaces/ue_interfaces.h"
 #include "srslte/common/log_filter.h"
-#include "mac/mac.h"
+#include "srsue/hdr/mac/mac.h"
 #include "srslte/common/mac_pcap.h"
 
 
@@ -451,12 +451,12 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  std::vector<void*> phy_log;
+  std::vector<srslte::log_filter*> phy_log;
 
   srslte::log_filter *mylog = new srslte::log_filter("PHY");
   char tmp[16];
   sprintf(tmp, "PHY%d",0);
-  phy_log.push_back((void*) mylog);
+  phy_log.push_back(mylog);
 
   switch (prog_args.verbose) {
     case 1:

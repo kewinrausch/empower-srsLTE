@@ -30,8 +30,8 @@
  *              layers and helpers.
  *****************************************************************************/
 
-#ifndef UE_H
-#define UE_H
+#ifndef SRSUE_UE_H
+#define SRSUE_UE_H
 
 #include <stdarg.h>
 #include <string>
@@ -72,6 +72,8 @@ public:
   bool is_attached();
   void start_plot();
 
+  void print_pool();
+
   static void rf_msg(srslte_rf_error_t error);
 
   // UE metrics interface
@@ -101,7 +103,7 @@ private:
   srslte::logger        *logger;
 
   // rf_log is on ue_base
-  std::vector<void*>  phy_log;
+  std::vector<srslte::log_filter*>  phy_log;
   srslte::log_filter  mac_log;
   srslte::log_filter  rlc_log;
   srslte::log_filter  pdcp_log;
@@ -109,8 +111,6 @@ private:
   srslte::log_filter  nas_log;
   srslte::log_filter  gw_log;
   srslte::log_filter  usim_log;
-
-  srslte::byte_buffer_pool *pool;
 
   all_args_t       *args;
   bool              started;
@@ -120,5 +120,5 @@ private:
 
 } // namespace srsue
 
-#endif // UE_H
+#endif // SRSUE_UE_H
   

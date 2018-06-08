@@ -32,8 +32,8 @@
  *  Reference:    3GPP TS 36.211 version 10.0.0 Release 10 Sec. 6.4
  *****************************************************************************/
 
-#ifndef PDSCH_
-#define PDSCH_
+#ifndef SRSLTE_PDSCH_H
+#define SRSLTE_PDSCH_H
 
 #include "srslte/config.h"
 #include "srslte/phy/common/phy_common.h"
@@ -76,6 +76,9 @@ typedef struct SRSLTE_API {
   cf_t *d[SRSLTE_MAX_CODEWORDS];                /* Modulated/Demodulated codewords */
   void *e[SRSLTE_MAX_CODEWORDS];
 
+  bool csi_enabled;
+  float *csi[SRSLTE_MAX_CODEWORDS];             /* Channel Strengh Indicator */
+
   /* tx & rx objects */
   srslte_modem_table_t mod[4];
   
@@ -106,6 +109,9 @@ SRSLTE_API int srslte_pdsch_set_rnti(srslte_pdsch_t *q,
 
 SRSLTE_API void srslte_pdsch_set_power_allocation(srslte_pdsch_t *q,
                                                   float rho_a);
+
+SRSLTE_API int srslte_pdsch_enable_csi(srslte_pdsch_t *q,
+                                       bool enable);
 
 SRSLTE_API void srslte_pdsch_free_rnti(srslte_pdsch_t *q, 
                                       uint16_t rnti);
@@ -164,4 +170,4 @@ SRSLTE_API float srslte_pdsch_last_noi(srslte_pdsch_t *q);
 SRSLTE_API uint32_t srslte_pdsch_last_noi_cw(srslte_pdsch_t *q,
                                              uint32_t cw_idx);
 
-#endif
+#endif // SRSLTE_PDSCH_H

@@ -28,7 +28,7 @@
  */
 
 
-#include "agent/dummy_agent.h"
+#include "srsenb/hdr/agent/dummy_agent.h"
 
 namespace srsenb {
 

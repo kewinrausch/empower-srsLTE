@@ -26,11 +26,11 @@
 
 #include <iostream>
 #include <assert.h>
-#include "upper/usim.h"
-#include "upper/nas.h"
+#include "srsue/hdr/upper/usim.h"
+#include "srsue/hdr/upper/nas.h"
 #include "srslte/upper/rlc.h"
-#include "upper/rrc.h"
-#include "mac/mac.h"
+#include "srsue/hdr/upper/rrc.h"
+#include "srsue/hdr/mac/mac.h"
 #include "srslte/common/log_filter.h"
 #include "srslte/upper/pdcp_entity.h"
 #include "srslte/upper/pdcp.h"
@@ -76,12 +76,13 @@ public:
     printf("NAS generated SDU (len=%d):\n", sdu->N_bytes);
     last_sdu_len = sdu->N_bytes;
     srslte_vec_fprint_byte(stdout, sdu->msg, sdu->N_bytes);
+    byte_buffer_pool::get_instance()->deallocate(sdu);
   }
   std::string get_rb_name(uint32_t lcid) { return std::string("lcid"); }
   uint32_t get_last_sdu_len() { return last_sdu_len; }
 
   void plmn_search() {};
-  void plmn_select(LIBLTE_RRC_PLMN_IDENTITY_STRUCT plmn_id) {};
+  void plmn_select(LIBLTE_RRC_PLMN_IDENTITY_STRUCT plmn_id, bool con_req) {};
 
   uint16_t get_mcc() { return mcc; }
   uint16_t get_mnc() { return mnc; }

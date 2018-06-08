@@ -38,7 +38,7 @@
 #include <list>
 #include <pthread.h>
 
-#include "mac/scheduler.h"
+#include "srsenb/hdr/mac/scheduler.h"
 
 /* Decorators for arguments */
 #define __ran_in_

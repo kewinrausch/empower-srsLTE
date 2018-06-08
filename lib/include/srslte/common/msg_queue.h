@@ -30,8 +30,8 @@
  *  Reference:
  *****************************************************************************/
 
-#ifndef MSG_QUEUE_H
-#define MSG_QUEUE_H
+#ifndef SRSLTE_MSG_QUEUE_H
+#define SRSLTE_MSG_QUEUE_H
 
 #include "srslte/common/common.h"
 #include <pthread.h>
@@ -56,6 +56,9 @@ public:
 
   ~msg_queue()
   {
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&not_empty);
+    pthread_cond_destroy(&not_full);
     delete [] buf;
   }
 
@@ -146,7 +149,7 @@ private:
   uint32_t              tail;
 };
 
-} // namespace srsue
+} // namespace srslte
 
 
-#endif // MSG_QUEUE_H
+#endif // SRSLTE_MSG_QUEUE_H

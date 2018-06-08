@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef UEPHYWORKERCOMMON_H
-#define UEPHYWORKERCOMMON_H
+#ifndef SRSUE_PHCH_COMMON_H
+#define SRSUE_PHCH_COMMON_H
 
 #define TX_MODE_CONTINUOUS 1
 
@@ -37,7 +37,7 @@
 #include "srslte/interfaces/ue_interfaces.h"
 #include "srslte/radio/radio.h"
 #include "srslte/common/log.h"
-#include "phy/phy_metrics.h"
+#include "phy_metrics.h"
 
 
 namespace srsue {
@@ -86,6 +86,9 @@ public:
   int last_ul_tbs[2*HARQ_DELAY_MS];
   uint32_t last_ul_tti[2*HARQ_DELAY_MS];
   srslte_mod_t last_ul_mod[2*HARQ_DELAY_MS];
+
+  uint8_t last_ri;
+  uint8_t last_pmi;
 
   phch_common(uint32_t max_mutex = 3);
   void init(phy_interface_rrc::phy_cfg_t *config,
@@ -184,4 +187,4 @@ private:
   
 } // namespace srsue
 
-#endif // UEPHYWORKERCOMMON_H
+#endif // SRSUE_PDCH_COMMON_H

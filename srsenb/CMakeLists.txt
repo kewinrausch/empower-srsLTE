@@ -62,7 +62,7 @@ include_directories(
     ${EMPOWER_AGENT_INCLUDE_DIRS}
     ${EMPOWER_PROTOCOLS_INCLUDE_DIRS}
     ${SEC_INCLUDE_DIRS}
-    ${PROJECT_SOURCE_DIR}/srsenb/hdr
+    ${PROJECT_SOURCE_DIR}
 )
 
 link_directories(

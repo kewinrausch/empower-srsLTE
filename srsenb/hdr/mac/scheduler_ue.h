@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef SCHED_UE_H
-#define SCHED_UE_H
+#ifndef SRSENB_SCHEDULER_UE_H
+#define SRSENB_SCHEDULER_UE_H
 
 #include <map>
 #include "srslte/common/log.h"
@@ -199,4 +199,4 @@ private:
 }
  
 
-#endif 
+#endif // SRSENB_SCHEDULER_UE_H

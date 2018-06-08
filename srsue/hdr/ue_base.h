@@ -29,8 +29,8 @@
  * Description: Base class for UEs.
  *****************************************************************************/
 
-#ifndef UE_BASE_H
-#define UE_BASE_H
+#ifndef SRSUE_UE_BASE_H
+#define SRSUE_UE_BASE_H
 
 #include <stdarg.h>
 #include <string>
@@ -147,7 +147,7 @@ class ue_base
 {
 public:
   ue_base();
-  virtual ~ue_base() {}
+  virtual ~ue_base();
 
   static ue_base* get_instance(srsue_instance_type_t type);
 
@@ -157,6 +157,8 @@ public:
   virtual void stop() = 0;
   virtual bool is_attached() = 0;
   virtual void start_plot() = 0;
+
+  virtual void print_pool() = 0;
 
   virtual void radio_overflow() = 0;
   
@@ -174,9 +176,12 @@ public:
   std::string get_build_mode();
   std::string get_build_info();
   std::string get_build_string();
+
+private:
+  srslte::byte_buffer_pool *pool;
 };
 
 } // namespace srsue
 
-#endif // UE_BASE_H
+#endif // SRSUE_UE_BASE_H
   

@@ -41,8 +41,8 @@
 #include "srslte/phy/phch/cqi.h"
 #include "srslte/phy/utils/vector.h"
 
-#include "mac/scheduler_harq.h"
-#include "mac/scheduler_RAN.h"
+#include "srsenb/hdr/mac/scheduler_harq.h"
+#include "srsenb/hdr/mac/scheduler_RAN.h"
 
 #define Error(fmt, ...)                             \
   do {                                              \
@@ -140,8 +140,7 @@ void ran_trace_tti(rt_data * rtd)
         ui->second.dl_rbg_mcs[27],
         ui->second.dl_rbg_mcs[28],
         ui->second.dl_rbg_mcs[29],
-        ui->second.dl_rbg_mcs[30],
-        ui->second.dl_rbg_mcs[31]);
+        ui->second.dl_rbg_mcs[30]);
 
       /* Reset MCS statistics */
       memset(ui->second.dl_rbg_mcs, 0, sizeof(int) * RTRACE_NOF_MCS);
@@ -714,6 +713,8 @@ void ran_duodynamic_tsched::schedule(
 
     /* A and B are not loaded */
     if(!load_A && !load_B) {
+      /* Reset to 50/50 situation */
+      m_switch = 7;
       /* What to do? Stay still? */
       goto cont;
     }
@@ -956,13 +957,13 @@ void dl_metric_ran::new_tti(
     if (!ue_a && iter->first != ue_b) {
       ue_a = iter->first;
       m_tenant_map[2].users.push_back(ue_a);
-      Warning("UE %x assigned to tenant %ld\n", ue_a, 2);
+      Warning("UE %x assigned to tenant %ld\n", ue_a, 2L);
     } else {
       if (!ue_b && iter->first != ue_a) {
         ue_b = iter->first;
         //m_tenant_map[2].users.push_back(ue_b);
         m_tenant_map[3].users.push_back(ue_b);
-        Warning("UE %x assigned to tenant %ld\n", ue_b, 3);
+        Warning("UE %x assigned to tenant %ld\n", ue_b, 3L);
       }
     }
 /* <------------------------------------------------------------------------- UNTIL HERE */
@@ -1216,7 +1217,7 @@ int dl_metric_ran::add_user(uint16_t rnti, uint64_t tenant)
   std::list<uint16_t>::iterator i;
 
   if (m_tenant_map.count(tenant) == 0) {
-    Error("Cannot add user %x, Tenant %d does not exists\n", rnti, tenant);
+    Error("Cannot add user %x, Tenant %ld does not exists\n", rnti, tenant);
     return -1;
   }
 
@@ -1239,7 +1240,7 @@ int dl_metric_ran::rem_user(uint16_t rnti, uint64_t tenant)
   std::list<uint16_t>::iterator i;
 
   if (m_tenant_map.count(tenant) == 0) {
-    Error("Cannot remove user %x, Tenant %d does not exists\n", rnti, tenant);
+    Error("Cannot remove user %x, Tenant %ld does not exists\n", rnti, tenant);
     return -1;
   }
 
