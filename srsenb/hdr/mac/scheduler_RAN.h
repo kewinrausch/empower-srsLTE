@@ -291,7 +291,7 @@ public:
  * Schedulers actually implemented for the RAN core:                          *
  *                                                                            *
  ******************************************************************************/
-
+#if 0
 /* Static Tenant resources assignment scheduler; see source for more info */
 class ran_static_tsched : public ran_tenant_scheduler {
 public:
@@ -327,7 +327,7 @@ private:
   /* Window in number of subframes */
   uint32_t        m_win;
 };
-
+#endif
 /* Static Tenant resources assignment scheduler; see source for more info */
 class ran_duodynamic_tsched : public ran_tenant_scheduler {
 public:
@@ -378,6 +378,11 @@ private:
    * switch allows the inverse operation.
    */
   uint32_t m_switch;
+
+  /* Lock/unlock the dynamic shifting behavior of the switch. Setting this to
+   * true will freeze the current situation of the balance between tenants.
+   */
+  bool     m_lock;
 
   /* Minimum amount of PRBG that a Tenant is granted to have at any time.
    */

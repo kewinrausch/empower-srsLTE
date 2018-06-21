@@ -221,7 +221,7 @@ namespace srsenb {
  * ROUND-ROBIN RESOURCE ALLOCATION FOR TENANT USERS
  *
  */
-srslte::log * tmpl;
+
 ran_rr_usched::ran_rr_usched()
 {
   m_last = 0;
@@ -304,7 +304,7 @@ void ran_rr_usched::schedule(
   /* Assign the groups of this tenant to the designed RNTI */
   for(j = 0; j < RAN_DL_MAX_RGB; j++) {
     /* This group is NOT in use, so free for me :) */
-    if (rbg[j] == 0) {
+    if (!rbg[j]) {
       ret[j] = rnti;
     }
   }
@@ -343,7 +343,7 @@ int ran_rr_usched::set_param(
  * "STATIC" TENANT-ASSIGNMENT SCHEDULER
  *
  */
-
+#if 0
 /* Constructor for the scheduler class */
 ran_static_tsched::ran_static_tsched()
 {
@@ -494,7 +494,7 @@ void ran_static_tsched::schedule(
 
   return;
 }
-
+#endif
 /*
  *
  * "DUO-DYNAMIC" TENANT-ASSIGNMENT SCHEDULER
@@ -507,6 +507,8 @@ ran_duodynamic_tsched::ran_duodynamic_tsched()
   /* Tenant A area starts (including) from PRBG 0 */
   /* Tenant B area starts (including) from PRBG 7 */
   m_switch   = 7;
+  /* Is the switch locked or free to dynamically adapt? */
+  m_lock     = 1;
   //m_switch   = 10; /* 5Mbps in the big one */
   /* Granted amount of PRBG per Tenant is 2 */
   m_limit    = 3;
@@ -523,7 +525,7 @@ ran_duodynamic_tsched::ran_duodynamic_tsched()
   /* Amount of PRBG used by tenant B */
   m_tenB_rbg = 0;
   /* Number of PRBG per TTI */
-  m_rbg_max    = 13; /* <----------- NOTE: Hardcoded for testing purposes */
+  m_rbg_max    = 13; /* <--------- NOTE: Hardcoded for testing purposes */
 }
 
 int ran_duodynamic_tsched::get_param(
@@ -573,7 +575,7 @@ void ran_duodynamic_tsched::schedule(
   bool                 rbg[RAN_DL_MAX_RGB],
   uint16_t             ret[RAN_DL_MAX_RGB])
 {
-  unsigned int i;
+  unsigned int                  i;
 
   //uint64_t     ten;
   //uint64_t     ten_load = 0;
@@ -595,8 +597,8 @@ void ran_duodynamic_tsched::schedule(
   /* Skip groups already in use and prepare the map for Tenant A */
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (rbg[i]) {
-      trbg_A[i] = 1;
-      trbg_B[i] = 1;
+      trbg_A[i] = 1;    /* Invalid group */
+      trbg_B[i] = 1;    /* Invalid group */
     } else {
       /* Tenant A lies in the lower part of the spectrum */
       if (i < m_switch) {
@@ -625,66 +627,27 @@ void ran_duodynamic_tsched::schedule(
         }
       }
     }
-      /* Skip groups already in use and prepare the map for Tenant A */
-      //for (i = 0; i < RAN_DL_MAX_RGB; i++) {
-      //  if (rbg[i]) {
-      //    trbg[i] = 1;
-      //  } else {
-      //    /* Tenant A lies in the lower part of the spectrum */
-      //    if (i < m_switch) {
-      //      trbg[i] = 0;
-      //    } else {
-      //      trbg[i] = 1;
-      //    }
-      //  }
-      //}
-
-      /* Invoke this tenant user-level scheduler */
-      //if(t->second.sched_user) {
-      //  t->second.sched_user->schedule(tti, &t->second, umap, trbg_A, ret);
-      //}
-    //}
-
-    /* Monitor the usage of Tenant B */
-   // if (t->first == m_tenB) {
-      //for (l = t->second.users.begin(); l != t->second.users.end(); ++l) {
-      // if (umap->count(*l) > 0) {
-      //    u = umap->find(*l);
-      //    m_tenB_rbg += u->second.DL_rbg_delta;
-      //  }
-      //}
-
-      /* Skip groups already in use and prepare the map for Tenant A */
-      //for (i = 0; i < RAN_DL_MAX_RGB; i++) {
-      //  if (rbg[i]) {
-      //    trbg[i] = 1;
-      //  }
-      //  else {
-      //    /* Tenant B lies in the upper part of the spectrum */
-      //    if (i >= m_switch) {
-      //      trbg[i] = 0;
-      //    }
-      //    else {
-      //      trbg[i] = 1;
-      //    }
-      //  }
-      //}
-
-      /* Invoke this tenant user-level scheduler */
-
-    //}
 
     if (t->second.sched_user) {
       t->second.sched_user->schedule(
         tti,
-	&t->second,
-	umap,
-	t->first == m_tenA ? trbg_A : trbg_B,
-	ret);
+        &t->second,
+        umap,
+        t->first == m_tenA ? trbg_A : trbg_B,
+        ret);
     }
   }
 
-  /* Decide, based on the loads if to move the switch */
+  /* If switching behavior is locked, bypass this logic */
+  if(m_lock) {
+    return;
+  }
+
+  /*
+   *
+   * Decide, based on the loads, if to move the switch *
+   *
+   */
 
   m_win_slot++;
 
@@ -744,7 +707,6 @@ void ran_duodynamic_tsched::schedule(
     }
 
 cont:
-    tmpl->error("RAN: A:%d\tB:%d\n", m_switch, m_rbg_max - m_switch);
 
     /* Reset */
     m_win_slot  = 0;
@@ -776,6 +738,7 @@ dl_metric_ran::dl_metric_ran()
   m_log           = 0;
   m_tenant_sched  = 0;
   m_max_rbg       = 0;
+  m_rbg_size      = 0;
   
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     m_tti_rbg[i]  = 0;
@@ -785,14 +748,13 @@ dl_metric_ran::dl_metric_ran()
 
 void dl_metric_ran::init(srslte::log * log_handle)
 {
-  m_log = log_handle;
-  tmpl=m_log;
+  m_log        = log_handle;
 #ifdef RAN_TRACE
   m_rtd.logger = log_handle;
 #endif /* RAN_TRACE */
 
-  /* Tenant scheduler is the static one by default */
-  // m_tenant_sched = new ran_static_tsched();
+  /* Do not use static scheduler yet... must be carefully debugged first */
+  //m_tenant_sched = new ran_static_tsched();
   m_tenant_sched = new ran_duodynamic_tsched();
 
   /* Adds the special tenant 1.
@@ -879,15 +841,12 @@ void dl_metric_ran::new_tti(
    */
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (i < start_rbg) {
-      /* In use */
-      m_tti_rbg[i] = true;
+      m_tti_rbg[i] = true;   /* In use */
     } else {
-      /* Out of given RBG */
       if (i >= start_rbg + nof_rbg) {
-        m_tti_rbg[i] = true;
+        m_tti_rbg[i] = true; /* In use */
       } else {
-        /* Not in use */
-        m_tti_rbg[i] = false;
+        m_tti_rbg[i] = false;/* Can be used */
       }
     }
   }
@@ -895,7 +854,7 @@ void dl_metric_ran::new_tti(
   /* Reset the users of the starting tenant */
   m_tenant_map[RAN_TENANT_STARTING].users.clear();
 
-  /* Reset the situation of the current subframe */
+  /* Reset the situation of the current sub-frame */
   memset(m_tti_users, 0, sizeof(uint32_t) * RAN_DL_MAX_RGB);
 
   /* Save for each user its own RNTI */
@@ -931,7 +890,7 @@ void dl_metric_ran::new_tti(
      * the MAC layer
      */
     for (ti = m_tenant_map.begin(); ti != m_tenant_map.end(); ++ti) {
-      for (ui = ti->second.users.begin()++; ui != ti->second.users.end(); ) {
+      for (ui = ti->second.users.begin(); ui != ti->second.users.end(); ++ui) {
         if (ue_db.count(*ui) == 0) {
 /* TO REMOVE --------------------------------------------------------------------------> */
 /* Static configuration of duodynamic scheduler */
@@ -943,16 +902,14 @@ void dl_metric_ran::new_tti(
             ue_b = 0;
           }
 /* <------------------------------------------------------------------------- UNTIL HERE */
-          ti->second.users.erase(ui++);
-          Warning("UE %x removed from tenant %ld\n", ue_a, ti->first);
-        } else {
-          ui++;
+          Warning("UE %x removed from tenant %ld\n", *ui, ti->first);
+          ui = ti->second.users.erase(ui);
         }
       }
     }  
 
 /* TO REMOVE --------------------------------------------------------------------------> */
-/* Static configuration of duodynamic scheduler */
+    /* Static configuration of duo-dynamic scheduler */
     /* Assign the UE_a if not already stored in UE_b*/
     if (!ue_a && iter->first != ue_b) {
       ue_a = iter->first;
@@ -988,24 +945,22 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
   uint32_t       nof_rbg   = 0;
   uint32_t       nof_h_rbg = 0;
   uint32_t       rbg_valid = 0;
-  uint32_t       dsize     = user->get_pending_dl_new_data(m_tti);
-
+  uint32_t       dsize     = 0;
   /* WARNING:
    * This MCS is modified after getting the user allocation, to technically
    * this is the MCS of the previous TTI, not of this one. Still is an
    * interesting statistics which can be stored.
    */
-  int            mcs = user->get_dl_mcs();
-
+  int            mcs       = user->get_dl_mcs();
   bool           ualloc[RAN_DL_MAX_RGB];
+  dl_harq_proc * harq_new;
+  dl_harq_proc * harq_ret  = user->get_pending_dl_harq(m_tti);
 
-  dl_harq_proc * harq      = user->get_pending_dl_harq(m_tti);
-
-  /* Prepare the mask where this user has the right to allocate data */
+  /* Prepare the mask where this user has the right to allocate data in */
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (m_tti_users[i] == rnti) {
       ualloc[i] = true;
-      nof_rbg++;     /* Count the number of RBG in the meantime. */
+      nof_rbg++; /* Count the number of RBG in the meantime. */
     } else {
       ualloc[i] = false;
     }
@@ -1013,65 +968,97 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
 
   /* This user is not present, so stop here */
   if (nof_rbg == 0) {
-    //m_user_map[rnti].DL_data_delta = 0;
     m_user_map[rnti].DL_rbg_delta  = 0;
 
+    rtrace_dl_mask(&this->m_rtd, rnti, 1 << 29, mcs);
     return NULL;
   }
 
   rbg_mask = calc_rbg_mask(ualloc);
-  //harq     = user->get_pending_dl_harq(m_tti);
+
+  /*
+   *
+   * Case: Pending, old, data should be sent.
+   *
+   */
 
   /* Process any active HARQ first */
 #if ASYNC_DL_SCHED
-  if (harq) {
+  if (harq_ret) {
 #else
-  if (harq && !harq->is_empty()) {
+  if (harq_ret && !harq_ret->is_empty()) {
 #endif
-    h_mask = harq->get_rbgmask();
+    h_mask = harq_ret->get_rbgmask();
 
-    /* Similar slots are available, use them */
+    /*
+     *
+     * Case: HARQ mask CAN fit in the given mask!
+     *
+     */
+
     if (allocation_is_valid(rbg_mask, h_mask)) {
       m_user_map[rnti].DL_rbg_delta = nof_rbg;
-      //Error("HARV RBG delta is %d\n", m_user_map[rnti].DL_rbg_delta);
 
       rtrace_dl_mask(&this->m_rtd, rnti, h_mask, mcs);
-      return harq;
+      return harq_ret;
     }
 
+    /* Slots are not similar, so count how many RBG we need */
     nof_h_rbg = count_rbg(h_mask);
 
-    /* Enough space for this harq to select a  */
-    if (nof_h_rbg < nof_rbg) {
+    /*
+     *
+     * Case: HARQ mask CANNOT fit in the given mask, but there are enough
+     * resources to create a new one.
+     *
+     */
+
+    if (nof_h_rbg <= nof_rbg) {
       rbg_valid = new_allocation(nof_h_rbg, ualloc, &h_mask);
 
       /* Accumulate how many RBG have been consumed */
       m_user_map[rnti].DL_rbg_delta = rbg_valid;
-      //Error("HARQ RBG delta is %d\n", m_user_map[rnti].DL_rbg_delta);
 
-      harq->set_rbgmask(h_mask);
-        
+      harq_ret->set_rbgmask(h_mask);
+
       rtrace_dl_mask(&this->m_rtd, rnti, h_mask, mcs);
-      return harq;
-      //}
+      return harq_ret;
     }
 
-    //Error("HARQ: %x, avail %x, Not possible to schedule HARQ\n", h_mask, rbg_mask);
-    harq->reset(0);
-    harq->reset(1);
+    /*
+     *
+     * Case: HARQ mask cannot fit in the given resources!
+     *
+     */
 
+    Error("HARQ: %x, avail %x, Not possible to schedule HARQ\n", h_mask, rbg_mask);
+
+    rtrace_dl_mask(&this->m_rtd, rnti, 0, mcs);
     return NULL;
   }
 
-//  harq   = user->get_empty_dl_harq();
+  /*
+   *
+   * Case: New data can be sent?
+   *
+   */
+
+  harq_new  = user->get_empty_dl_harq();
 
 #if ASYNC_DL_SCHED
-  harq = user->get_empty_dl_harq();
-  if (harq) {
+  if (harq_new) {
 #else
-  if (harq && h->is_empty()) {
+  if (harq_new && harq_new->is_empty()) {
 #endif
-    /* Is there some new data? */
+
+    /*
+     *
+     * Case: Is there data from upper layers that should be sent?
+     *
+     */
+
+    dsize = user->get_pending_dl_new_data(m_tti);
+
     if (dsize > 0) {
       nof_h_rbg = user->get_required_prb_dl(dsize, m_ctrl_sym);
 
@@ -1083,31 +1070,25 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
       h_mask    = 0;
       rbg_valid = new_allocation(nof_h_rbg, ualloc, &h_mask);
 
-      /* Use the available RBGs if we require too much of them */
-      //if (nof_h_rbg > nof_rbg) {
-        /* nof_h_rbg = nof_rbg; */
-      //  return NULL;  /* This was the original decision here */
-      //}
-
-      //m_user_map[rnti].DL_data      += dsize;
-      //m_user_map[rnti].DL_data_delta = dsize;
-      //m_user_map[rnti].DL_rbg_delta  = nof_h_rbg;
+      /*
+       *
+       * Case: Is it possible to use a valid set of RBG?
+       *
+       */
 
       if (h_mask) {
-        harq->set_rbgmask(h_mask);
-
+        harq_new->set_rbgmask(h_mask);
         m_user_map[rnti].DL_rbg_delta = rbg_valid;
-        //Error("NEW RBG delta is %d\n", m_user_map[rnti].DL_rbg_delta);
 
         rtrace_dl_mask(&this->m_rtd, rnti, h_mask, mcs);
-        return harq;
+        return harq_new;
       }
     }
   }
 
-  m_user_map[rnti].DL_rbg_delta  = 0;
+  m_user_map[rnti].DL_rbg_delta = 0;
+  rtrace_dl_mask(&this->m_rtd, rnti, 0, mcs);
 
-  rtrace_dl_mask(&this->m_rtd, rnti, h_mask, mcs);
   return NULL; 
 }
 
@@ -1167,10 +1148,14 @@ int dl_metric_ran::new_allocation(
     int      t;
 
     /* Operate on the existing mask of PRBG. */
-    for (i = 0, t = 0; i < RAN_DL_MAX_RGB && nof_rbg > 0; i++) {
+    for (i = 0, t = 0; i < RAN_DL_MAX_RGB; i++) {
         /* If can be used, then mark a possible PRBG as consumed */
         if (rbg_mask[i]) {
+          /* We need the RBG? */
+          if(nof_rbg > 0) {
             t++;
+            nof_rbg--;
+          }
         }
     }
 
@@ -1178,7 +1163,7 @@ int dl_metric_ran::new_allocation(
         *final_mask = calc_rbg_mask(rbg_mask);
     }
 
-    /* How many PRBG are left? */
+    /* How many PRBG have been selected? */
     return t;
 }
 
