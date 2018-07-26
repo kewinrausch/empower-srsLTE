@@ -69,13 +69,13 @@
     m_logger->debug("AGENT: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
-#define RSRP_RANGE_TO_VALUE(x)	((float)x - 140.0f)
-#define RSRQ_RANGE_TO_VALUE(x)	(((float)x / 2) - 20.0f)
+#define RSRP_RANGE_TO_VALUE(x)  ((float)x - 140.0f)
+#define RSRQ_RANGE_TO_VALUE(x)  (((float)x / 2) - 20.0f)
 
 /* Dif "b-a" two timespec structs and return such value in ms.*/
-#define ts_diff_to_ms(a, b) 			\
-	(((b.tv_sec - a.tv_sec) * 1000) +	\
-	 ((b.tv_nsec - a.tv_nsec) / 1000000))
+#define ts_diff_to_ms(a, b)           \
+  (((b.tv_sec - a.tv_sec) * 1000) +   \
+  ((b.tv_nsec - a.tv_nsec) / 1000000))
 
 namespace srsenb {
 
@@ -117,14 +117,14 @@ static int ea_cell_setup(uint32_t mod, uint16_t pci)
 
   all_args_t * args = enb::get_instance()->get_args();
 
+  /* Cell not present; notify the error */
   if(pci != (uint16_t)args->enb.pci) {
-    blen = epf_single_ccap_rep(
+    blen = epf_single_ccap_rep_fail(
       buf,
       EMPOWER_AGENT_BUF_SMALL_SIZE,
       em_agent->get_id(),
-      cell.pci,
-      mod,
-      &cell);
+      (uint16_t)args->enb.pci,
+      mod);
 
     if(blen < 0) {
       return -1;
@@ -158,26 +158,30 @@ static int ea_cell_setup(uint32_t mod, uint16_t pci)
 static int ea_enb_setup(uint32_t mod)
 {
   char        buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  ep_cell_det cells[1];
+  ep_enb_det  enbd;
   int         blen;
 
   all_args_t * args  = enb::get_instance()->get_args();
 
-  cells[0].cap       = EP_CCAP_NOTHING;
-  cells[0].pci       = (uint16_t)args->enb.pci;
-  cells[0].DL_earfcn = (uint16_t)args->rf.dl_earfcn;
-  cells[0].UL_earfcn = (uint16_t)args->rf.ul_earfcn;
-  cells[0].DL_prbs   = (uint8_t) args->enb.n_prb;
-  cells[0].UL_prbs   = (uint8_t) args->enb.n_prb;
+  /* This eNB can report and measure UE on its cells */
+  enbd.capmask = EP_ECAP_UE_REPORT | EP_ECAP_UE_MEASURE;
+
+  /* The cell can perform MAC layer resource reporting */
+  enbd.cells[0].cap       = EP_CCAP_MAC_REPORT;
+  enbd.cells[0].pci       = (uint16_t)args->enb.pci;
+  enbd.cells[0].DL_earfcn = (uint16_t)args->rf.dl_earfcn;
+  enbd.cells[0].UL_earfcn = (uint16_t)args->rf.ul_earfcn;
+  enbd.cells[0].DL_prbs   = (uint8_t) args->enb.n_prb;
+  enbd.cells[0].UL_prbs   = (uint8_t) args->enb.n_prb;
+  
+  enbd.nof_cells          = 1;
 
   blen = epf_single_ecap_rep(
     buf, EMPOWER_AGENT_BUF_SMALL_SIZE,
     em_agent->get_id(),
-    0,
-    0,
-    EP_ECAP_UE_REPORT,
-    cells,
-    1);
+    0, /* Response coming from eNB, and not a cell in particular */
+    mod,
+    &enbd);
 
   if(blen < 0) {
     return -1;
@@ -345,7 +349,7 @@ int empower_agent::init(
 
 void empower_agent::release()
 {
-  Info("Agent released\n");
+  //Info("Agent released\n");
 }
 
 int empower_agent::reset()
