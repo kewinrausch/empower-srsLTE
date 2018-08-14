@@ -32,7 +32,9 @@
  *
  */
 
+#include <inttypes.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -46,22 +48,22 @@
 
 #define Error(fmt, ...)                             \
   do {                                              \
-    m_log->error("RAN: "fmt, ##__VA_ARGS__);        \
+    m_log->error("SCHED_RAN: "fmt, ##__VA_ARGS__);  \
   } while(0)
 
 #define Warning(fmt, ...)                           \
   do {                                              \
-    m_log->warning("RAN: "fmt, ##__VA_ARGS__);      \
+    m_log->warning("SCHED_RAN: "fmt, ##__VA_ARGS__);\
   } while(0)
 
 #define Info(fmt, ...)                              \
   do {                                              \
-    m_log->info("RAN: "fmt, ##__VA_ARGS__);         \
+    m_log->info("SCHED_RAN: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
 #define Debug(fmt, ...)                             \
   do {                                              \
-    m_log->debug("RAN: "fmt, ##__VA_ARGS__);        \
+    m_log->debug("SCHED_RAN: "fmt, ##__VA_ARGS__);  \
   } while(0)
 
 /******************************************************************************
@@ -69,6 +71,8 @@
  *                          TRACING PART FOR RAN                              *
  *                                                                            *
  ******************************************************************************/
+
+//#define RAN_STATIC
 
 /* RAN tracing capabilities:
  *
@@ -80,7 +84,7 @@
  */
 #ifdef RAN_TRACE
 
-/* Trace and log data, eventually */
+// Trace and log data, eventually 
 void ran_trace_tti(rt_data * rtd)
 {
   int  i;
@@ -93,7 +97,7 @@ void ran_trace_tti(rt_data * rtd)
 
   rtd->stats.nof_tti++;
 
-  /* Dump the stats! */
+  // Dump the stats! 
   if (rtd->stats.nof_tti >= RTRACE_INTERVAL) {
     Warning("*** Dumping statistics ***************************************\n");
     Warning("N.of elapsed TTIs: %d\n", rtd->stats.nof_tti);
@@ -106,10 +110,10 @@ void ran_trace_tti(rt_data * rtd)
       Warning("RAN user %x\n", ui->first);
 
       Warning("    DL_MCS --> "
-        "%d %d %d %d %d %d %d %d %d | "          /* QPSK */
-        "%d %d %d %d %d %d %d | "                /* 16-QAM */
-        "%d %d %d %d %d %d %d %d %d %d %d %d | " /* 64-QAM */
-        "%d %d %d\n",                            /* Reserved */
+        "%d %d %d %d %d %d %d %d %d | "          // QPSK 
+        "%d %d %d %d %d %d %d | "                // 16-QAM 
+        "%d %d %d %d %d %d %d %d %d %d %d %d | " // 64-QAM 
+        "%d %d %d\n",                            // Reserved 
         ui->second.dl_rbg_mcs[0],
         ui->second.dl_rbg_mcs[1],
         ui->second.dl_rbg_mcs[2],
@@ -142,7 +146,7 @@ void ran_trace_tti(rt_data * rtd)
         ui->second.dl_rbg_mcs[29],
         ui->second.dl_rbg_mcs[30]);
 
-      /* Reset MCS statistics */
+      // Reset MCS statistics 
       memset(ui->second.dl_rbg_mcs, 0, sizeof(int) * RTRACE_NOF_MCS);
 
       for (i = 0; i < RTRACE_NOF_UMASKS; i++) {
@@ -177,7 +181,7 @@ void ran_trace_tti(rt_data * rtd)
   }
 }
 
-/* Trace single user allocation to show it later */
+// Trace single user allocation to show it later
 void ran_trace_DL_mask(rt_data * rtd, uint16_t rnti, uint32_t mask, int mcs)
 {
   int  i;
@@ -191,7 +195,7 @@ void ran_trace_DL_mask(rt_data * rtd, uint16_t rnti, uint32_t mask, int mcs)
         j = i;
       }
 
-      /* Found this mask... again... */
+      // Found this mask... again...
       if (mask == rtd->stats.users[rnti].dl_rbg_masks[i]) {
         rtd->stats.users[rnti].dl_rbg_count[i] += 1;
         j = -1;
@@ -206,7 +210,7 @@ void ran_trace_DL_mask(rt_data * rtd, uint16_t rnti, uint32_t mask, int mcs)
   }
 }
 
-#endif /* RAN_TRACE */
+#endif // RAN_TRACE
 
 namespace srsenb {
 
@@ -218,13 +222,19 @@ namespace srsenb {
 
 /*
  *
- * ROUND-ROBIN RESOURCE ALLOCATION FOR TENANT USERS
+ * ROUND-ROBIN RESOURCE ALLOCATION FOR SLICE USERS
  *
  */
 
 ran_rr_usched::ran_rr_usched()
 {
+  m_id   = 0x80000001;
   m_last = 0;
+}
+
+ran_rr_usched::~ran_rr_usched()
+{
+  // Nothing
 }
 
 /* Scheduler:
@@ -235,11 +245,11 @@ ran_rr_usched::ran_rr_usched()
  *
  * Behavior:
  *    Maintains the RNTI of the last scheduled user, and loop through users 
- *    associated with the tenant to select the next one. At each selected user
+ *    associated with the slice to select the next one. At each selected user
  *    is given the use of the whole spectrum for that subframe.
  *
  * Assumptions:
- *    It assumes that the tenant has at least one PRBG assigned to itself during
+ *    It assumes that the slice has at least one PRBG assigned to itself during
  *    the given TTI.
  *
  * Output:
@@ -248,7 +258,7 @@ ran_rr_usched::ran_rr_usched()
  */
 void ran_rr_usched::schedule(
   const uint32_t     tti,
-  ran_tenant *       tenant,
+  ran_mac_slice *    slice,
   user_map_t *       umap,
   bool               rbg[RAN_DL_MAX_RGB],
   uint16_t           ret[RAN_DL_MAX_RGB]) 
@@ -256,54 +266,54 @@ void ran_rr_usched::schedule(
   uint16_t first = 0;
   uint16_t rnti  = 0;
 
-  std::list<uint16_t>::iterator i;
+  std::map<uint16_t, int>::iterator i;
   int j;
 
-   /* Select the next candidate RNTI */
-  for(i = tenant->users.begin(); i != tenant->users.end(); ++i) {
-    /* Save the first valid RNTI in case we reach the end of the list */
+   // Select the next candidate RNTI
+  for(i = slice->users.begin(); i != slice->users.end(); ++i) {
+    // Save the first valid RNTI in case we reach the end of the list
     if (!first) {
-      first = *i;
+      first = i->first;
     }
 
-    /* Last RNTI not selected yet? */
+    // Last RNTI not selected yet?
     if(!m_last) {
-      rnti = *i;
+      rnti = i->first;
       break;
     }
 
-    /* Ok, this was the last selected */
-    if(*i == m_last) {
+    // Ok, this was the last selected
+    if(i->first == m_last) {
       i++;
 
-      /* If we are at the end of the list, select the first again */
-      if(i == tenant->users.end()) {
+      // If we are at the end of the list, select the first again
+      if(i == slice->users.end()) {
         rnti = first;
         break;
       } 
-      /* Otherwise  */
+      // Otherwise 
       else {
-        rnti = *i;
+        rnti = i->first;
         break;
       }
     }
   }
 
-  /* No users present in this tenant */
+  // No users present in this slice
   if(first == 0) {
     return;
   }
 
-  /* In the case we reached the end but no RNTI has been selected yet */
-  if (!rnti && i == tenant->users.end()) {
+  // In the case we reached the end but no RNTI has been selected yet
+  if (!rnti && i == slice->users.end()) {
     rnti = first;
   }
 
   m_last = rnti;
 
-  /* Assign the groups of this tenant to the designed RNTI */
+  // Assign the groups of this slice to the designed RNTI
   for(j = 0; j < RAN_DL_MAX_RGB; j++) {
-    /* This group is NOT in use, so free for me :) */
+    // This group is NOT in use, so free for me :)
     if (!rbg[j]) {
       ret[j] = rnti;
     }
@@ -313,238 +323,174 @@ void ran_rr_usched::schedule(
 }
 
 int ran_rr_usched::get_param(
-  const char *       name,
-  const unsigned int nlen,
+  char *       name,
+  unsigned int nlen,
   char *             value,
-  const unsigned int vlen) 
+  unsigned int vlen) 
 {
-  /* Currently not allowed to get parameters */
+  // Currently not allowed to get parameters
   return -1;
 }
 
 int ran_rr_usched::set_param(
-  const char *       name,
-  const unsigned int nlen,
-  const char *       value,
-  const unsigned int vlen)
+  char *       name,
+  unsigned int nlen,
+  char *       value,
+  unsigned int vlen)
 {
-  /* Currently not allowed to set parameters */
+  // Currently not allowed to set parameters
   return -1;
 }
 
 /******************************************************************************
  *                                                                            *
- *                        Tenant schedulers for RAN                           *
+ *                         Slice schedulers for RAN                           *
  *                                                                            *
  ******************************************************************************/
 
 /*
  *
- * "STATIC" TENANT-ASSIGNMENT SCHEDULER
- *
- */
-#if 0
-/* Constructor for the scheduler class */
-ran_static_tsched::ran_static_tsched()
-{
-  pthread_mutex_init(&m_lock, 0);
-
-  m_win           = 10;
-  m_tenant_matrix = (uint64_t *)malloc(
-    sizeof(uint64_t) * m_win * RAN_DL_MAX_RGB);
-
-  /* Clear the memory area */
-  memset(m_tenant_matrix, 0, sizeof(uint64_t) * m_win * RAN_DL_MAX_RGB);
-  
-  /* Subframe 0 assigned to tenant 1, the initial one for all the UEs */
-
-  m_tenant_matrix[0]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[1]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[2]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[3]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[4]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[5]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[6]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[7]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[8]  = RAN_TENANT_STARTING;
-  m_tenant_matrix[9]  = RAN_TENANT_STARTING;
-
-  m_tenant_matrix[10] = RAN_TENANT_STARTING;
-  m_tenant_matrix[11] = RAN_TENANT_STARTING;
-  m_tenant_matrix[12] = RAN_TENANT_STARTING;
-  m_tenant_matrix[13] = RAN_TENANT_STARTING;
-  m_tenant_matrix[14] = RAN_TENANT_STARTING;
-  m_tenant_matrix[15] = RAN_TENANT_STARTING;
-  m_tenant_matrix[16] = RAN_TENANT_STARTING;
-  m_tenant_matrix[17] = RAN_TENANT_STARTING;
-  m_tenant_matrix[18] = RAN_TENANT_STARTING;
-  m_tenant_matrix[19] = RAN_TENANT_STARTING;
-
-  m_tenant_matrix[20] = RAN_TENANT_STARTING;
-  m_tenant_matrix[21] = RAN_TENANT_STARTING;
-  m_tenant_matrix[22] = RAN_TENANT_STARTING;
-  m_tenant_matrix[23] = RAN_TENANT_STARTING;
-  m_tenant_matrix[24] = RAN_TENANT_STARTING;
-}
-
-int ran_static_tsched::get_param(
-  const char *         name,
-  const unsigned int   nlen,
-  char *               value,
-  const unsigned int   vlen)
-{
-  unsigned int i;
-  unsigned int vl = 0;
-
-  /* TTI window request; do not count null-terminator */
-  if(strncmp(name, "tti_window", 10) == 0) {
-    /* Since no-one is going to modify this element while the agent read it (
-     * is a scheduler property!), we can avoid to lock the resource.
-     */
-    return sprintf(value, "%d", m_win);
-  }
-
-  /* Tenant matrix request; do not count null-terminator */
-  if (strncmp(name, "tenant_map", 10) == 0) {
-    /* Since no-one is going to modify this element while the agent read it (
-     * is a scheduler property!), we can avoid to lock the resource.
-     */
-    for(i = 0; i < (m_win * RAN_DL_MAX_RGB) && vl < vlen; i++) {
-      vl += sprintf(value, "%ld,", m_tenant_matrix[i]);
-    }
-
-    return vl;
-  }
-
-  /* Parameter does not exists */
-  return -1;
-}
-
-int ran_static_tsched::set_param(
-  const char *       name,
-  const unsigned int nlen,
-  const char *       value,
-  const unsigned int vlen)
-{
-  /* Error, for the moment */
-  return -1;
-}
-
-/* Scheduler:
- *    Static scheduler for Tenants
- *
- * Type:
- *    Tenant level
- *
- * Behavior:
- *    Maintains a map of the associated resources which are linked to Tenant 
- *    IDs. This maps is acquired and updated by the controller. Resources passed
- *    by 'rbg' variable are polished and organized between Tenants, then each 
- *    Tenants has the possibility to run their own user scheduler to prepare the
- *    subframe organization of RNTIs.
- *
- * Assumptions:
- *    Does not enforce any security check after all the User schedulers have 
- *    been ran. This means that miss-behaving user schedulers can still mess 
- *    with the spectrum if poorly implemented.
- *
- * Output:
- *    The 'ret' arguments is organized to contains that UEs which are allowed
- *    for transmission during this subframe.
- */
-void ran_static_tsched::schedule(
-  const uint32_t       tti,
-  tenant_map_t *       tmap,
-  user_map_t *         umap,
-  bool                 rbg[RAN_DL_MAX_RGB],
-  uint16_t             ret[RAN_DL_MAX_RGB])
-{
-  int        i;
-  int        s; /* Something for this tenant? */
-
-  uint32_t   tti_idx = tti % m_win;
-  uint64_t * tslice  = m_tenant_matrix + (tti_idx * RAN_DL_MAX_RGB);
-  bool       trbg[RAN_DL_MAX_RGB] = {1};
-
-  tenant_map_t::iterator t;
-
-  for (t = tmap->begin(); t != tmap->end(); ++t) {
-    s = 0;
-
-    for (i = 0; i < RAN_DL_MAX_RGB; i++) {
-      /* Skip groups already in use */
-      if(rbg[i]) {
-        continue;
-      }
-
-      /* Mark as 'not in use' the PRBG assigned to this tenant */
-      if (t->first == tslice[i]) {
-        trbg[i] = 0;
-        s       = 1;
-      } else {
-        trbg[i] = 1;
-      }
-    }
-
-    /* If at least one group is allocated to this tenant, schedule it's users */
-    if (s && t->second.sched_user) {
-      t->second.sched_user->schedule(tti, &t->second, umap, trbg, ret);
-    }
-  }
-
-  return;
-}
-#endif
-/*
- *
- * "DUO-DYNAMIC" TENANT-ASSIGNMENT SCHEDULER
+ * "DUO-DYNAMIC" SLICE-ASSIGNMENT SCHEDULER
  *
  */
 
-/* Constructor for the scheduler class */
-ran_duodynamic_tsched::ran_duodynamic_tsched()
+// Constructor for the scheduler class
+ran_duodynamic_ssched::ran_duodynamic_ssched()
 {
-  /* Tenant A area starts (including) from PRBG 0 */
-  /* Tenant B area starts (including) from PRBG 7 */
+  m_id       = 0x00000002;
+
+  // Slice A area starts (including) from PRBG 0
+  // Slice B area starts (including) from PRBG 7
   m_switch   = 7;
-  /* Is the switch locked or free to dynamically adapt? */
+  //m_switch   = 10; // 5Mbps in the big one
+  // Is the switch locked or free to dynamically adapt?
   m_lock     = 1;
-  //m_switch   = 10; /* 5Mbps in the big one */
-  /* Granted amount of PRBG per Tenant is 2 */
+  // Granted amount of PRBG per Slice is 3
   m_limit    = 3;
-  /* Window to consider is one frame (10 subframes) */
+  // Window to consider is one frame (10 subframes)
   m_win      = 10;
-  /* Tenant A ID */
-  m_tenA     = 2; /* <------------ NOTE: Hardcoded for testing purposes */
-  /* Tenant B ID */
-  m_tenB     = 3; /* <------------ NOTE: Hardcoded for testing purposes */
-  /* Slot of TTIs used for scheduler monitoring */
+  // Slice A ID
+  m_tenA     = RAN_SLICE_STARTING; // <----------------------------------------- NOTE: Hardcoded for testing purposes
+  // Slice B ID
+#ifdef RAN_STATIC  /* <---------------------------------------------------------  No Controller static setup */
+  m_tenB     = 2L;
+#else
+  m_tenB     = 0;
+#endif /* <------------------------------------------------------------------------------------------------- */
+  
+  // Slot of TTIs used for scheduler monitoring
   m_win_slot = 0;
-  /* Amount of PRBG used by tenant A */
+  // Amount of PRBG used by slice A
   m_tenA_rbg = 0;
-  /* Amount of PRBG used by tenant B */
+  // Amount of PRBG used by slice B
   m_tenB_rbg = 0;
-  /* Number of PRBG per TTI */
-  m_rbg_max    = 13; /* <--------- NOTE: Hardcoded for testing purposes */
+  // Number of PRBG per TTI
+  m_rbg_max  = 13; // <--------------------------------------------------------- NOTE: Hardcoded for testing purposes
 }
 
-int ran_duodynamic_tsched::get_param(
-  const char *         name,
-  const unsigned int   nlen,
-  char *               value,
-  const unsigned int   vlen)
+ran_duodynamic_ssched::~ran_duodynamic_ssched() 
 {
-  /* Parameters getting is not supported right now */
+  // Nothing
+}
+
+int ran_duodynamic_ssched::get_param(
+  char *         name,
+  unsigned int   nlen,
+  char *         value,
+  unsigned int   vlen)
+{
+  uint32_t rbg;
+
+  uint64_t slice_id;
+  char *   slice;
+
+  // Handles RBG assignment 
+  if(strcmp(name, "rbg") == 0) {
+    slice = strtok(value, ",");
+    
+    if(!slice) {
+      return -1;
+    }
+
+    slice_id = strtoull(slice, 0, 10);
+
+    if(slice_id == m_tenA) {
+      return (int)m_switch;
+    } else if(slice_id == m_tenB) {
+      return (int)(m_rbg_max - m_switch);
+    }
+
+    // Other tenants have no resources
+    return 0;
+  }
+
   return -1;
 }
 
-int ran_duodynamic_tsched::set_param(
-  const char *       name,
-  const unsigned int nlen,
-  const char *       value,
-  const unsigned int vlen)
+int ran_duodynamic_ssched::set_param(
+  char *       name,
+  unsigned int nlen,
+  char *       value,
+  unsigned int vlen)
 {
-  /* Parameters setting is not supported right now */
+  uint32_t rbg;
+
+  uint64_t slice_id;
+  char *   slice;
+
+  char *   val;
+  uint16_t val_rbg;
+
+  // Handles RBG assignment 
+  if(strcmp(name, "rbg") == 0) {
+    slice = strtok(value, ",");
+    val = strtok(NULL, ",");
+    
+    if(!slice || !val) {
+      return -1;
+    }
+
+    slice_id = strtoull(slice, 0, 10);
+    val_rbg  = (uint16_t)atoi(val);
+
+    printf("Setting %" PRIu64 " to rbg %d\n", slice_id, val_rbg);
+
+    /* Case Slice A, allocation from 0 to switch:
+     *    The allocation requested is the switch itself. This means that checks
+     *    can be done directly using the given value 'val_rbg'.
+     * 
+     *    e.g: If A want 10 RBG, switch should be moved to 10.
+     */
+    if(m_tenA == slice_id) {
+      if(val_rbg > m_rbg_max - m_limit) {
+        m_switch = m_rbg_max - m_limit;
+      } else if(val_rbg < m_limit) {
+        m_switch = m_limit;
+      } else {
+        m_switch = val_rbg;
+      }
+    } 
+    /* Case Slice B, allocation from switch to the max:
+     *    Allocation here happens from switch to max. This means that the target
+     *    switch value is 'max - val_rbg'
+     * 
+     *    e.g: If B want 10 RBG, switch should be moved to 3. 
+     *         This means 3 = 13(max) - 10(requested)
+     */
+    else if(m_tenB == slice_id) {
+      rbg = m_rbg_max - val_rbg;
+      
+      if(rbg > m_rbg_max - m_limit) {
+        m_switch = m_rbg_max - m_limit;
+      } else if(rbg < m_limit) {
+        m_switch = m_limit;
+      } else {
+        m_switch = rbg;
+      }
+    }
+  }
+
+  // Parameters setting is not supported right now
   return -1;
 }
 
@@ -552,7 +498,7 @@ int ran_duodynamic_tsched::set_param(
  *    Duo Dynamic scheduler for Tenants
  *
  * Type:
- *    Tenant level
+ *    Slice level
  *
  * Behavior:
  *    The scheduler keeps a 'barrier' switch between the two Tenants, which 
@@ -568,90 +514,90 @@ int ran_duodynamic_tsched::set_param(
  *    The 'ret' arguments is organized to contains that UEs which are allowed
  *    for transmission during this subframe.
  */
-void ran_duodynamic_tsched::schedule(
-  const uint32_t       tti,
-  tenant_map_t *       tmap,
-  user_map_t *         umap,
-  bool                 rbg[RAN_DL_MAX_RGB],
-  uint16_t             ret[RAN_DL_MAX_RGB])
+void ran_duodynamic_ssched::schedule(
+  const uint32_t tti,
+  slice_map_t *  smap,
+  user_map_t *   umap,
+  bool           rbg[RAN_DL_MAX_RGB],
+  uint16_t       ret[RAN_DL_MAX_RGB])
 {
-  unsigned int                  i;
+  unsigned int          i;
 
   //uint64_t     ten;
   //uint64_t     ten_load = 0;
   //uint32_t     tti_idx  = tti % m_win;
-  bool                          trbg_A[RAN_DL_MAX_RGB];
-  bool                          trbg_B[RAN_DL_MAX_RGB];
+  bool                  trbg_A[RAN_DL_MAX_RGB];
+  bool                  trbg_B[RAN_DL_MAX_RGB];
 
-  ran_tenant *                  sched_t = 0;
+  ran_mac_slice *       sched_t = 0;
 
-  tenant_map_t::iterator        t; /* Tenant iterator */
-  user_map_t::iterator          u; /* User map iterator */
-  std::list<uint16_t>::iterator l; /* User list iterator */
+  slice_map_t::iterator s; // Slice iterator
+  user_map_t::iterator  u; // User map iterator
+  std::map<uint16_t, int>::iterator l; // User list iterator
 
-  uint32_t                      tot_A;     /* Total RBG for A */
-  int                           load_A = 0;/* Is A loaded with data? */
-  uint32_t                      tot_B;     /* Total RBG for B */
-  int                           load_B = 0;/* Is B loaded with data? */
+  uint32_t              tot_A;     // Total RBG for A
+  int                   load_A = 0;// Is A loaded with data?
+  uint32_t              tot_B;     // Total RBG for B
+  int                   load_B = 0;// Is B loaded with data?
 
-  /* Skip groups already in use and prepare the map for Tenant A */
+  // Skip groups already in use and prepare the map for Slice A
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (rbg[i]) {
-      trbg_A[i] = 1;    /* Invalid group */
-      trbg_B[i] = 1;    /* Invalid group */
+      trbg_A[i] = 1;    // Invalid group
+      trbg_B[i] = 1;    // Invalid group
     } else {
-      /* Tenant A lies in the lower part of the spectrum */
+      // Slice A lies in the lower part of the spectrum
       if (i < m_switch) {
-        trbg_A[i] = 0;  /* Valid group   */
-        trbg_B[i] = 1;  /* Invalid group */
+        trbg_A[i] = 0;  // Valid group  
+        trbg_B[i] = 1;  // Invalid group
       } else {
-        trbg_A[i] = 1;  /* Invalid group */
-        trbg_B[i] = 0;  /* Valid group   */
+        trbg_A[i] = 1;  // Invalid group
+        trbg_B[i] = 0;  // Valid group  
       }
     }
   }
 
-  /* Perform scheduling tenant per tenant */
-  for (t = tmap->begin(); t != tmap->end(); ++t) {
-    /* Monitor the usage of Tenant A or B */
-    if(t->first == m_tenA) {
-      for(l = t->second.users.begin(); l != t->second.users.end(); ++l) {
-       if(umap->count(*l) > 0) {
-          m_tenA_rbg += umap->find(*l)->second.DL_rbg_delta;
+  // Perform scheduling slice per slice
+  for (s = smap->begin(); s != smap->end(); ++s) {
+    // Monitor the usage of Slice A or B
+    if(s->first == m_tenA) {
+      for(l = s->second.users.begin(); l != s->second.users.end(); ++l) {
+       if(umap->count(l->first) > 0) {
+          m_tenA_rbg += umap->find(l->first)->second.DL_rbg_delta;
         }
       }
-    } else {
-      for(l = t->second.users.begin(); l != t->second.users.end(); ++l) {
-        if(umap->count(*l) > 0) {
-          m_tenB_rbg += umap->find(*l)->second.DL_rbg_delta;
+    } else if(s->first == m_tenB) {
+      for(l = s->second.users.begin(); l != s->second.users.end(); ++l) {
+        if(umap->count(l->first) > 0) {
+          m_tenB_rbg += umap->find(l->first)->second.DL_rbg_delta;
         }
       }
     }
 
-    if (t->second.sched_user) {
-      t->second.sched_user->schedule(
+    if (s->second.sched_user) {
+      s->second.sched_user->schedule(
         tti,
-        &t->second,
+        &s->second,
         umap,
-        t->first == m_tenA ? trbg_A : trbg_B,
+        s->first == m_tenA ? trbg_A : trbg_B,
         ret);
     }
   }
 
-  /* If switching behavior is locked, bypass this logic */
+  // If switching behavior is locked, bypass this logic
   if(m_lock) {
     return;
   }
 
   /*
    *
-   * Decide, based on the loads, if to move the switch *
+   * Decide, based on the loads, if to move the switch
    *
    */
 
   m_win_slot++;
 
-  /* 1 seconds routine; decide what to do now... */
+  // 1 seconds routine; decide what to do now...
   if(m_win_slot == 1000) {
     tot_A = (m_switch) * 1000;
     tot_B = (m_rbg_max - m_switch) * 1000;
@@ -660,12 +606,12 @@ void ran_duodynamic_tsched::schedule(
      * In which state are we?
      */
 
-    /* Is A loaded with data? */
+    // Is A loaded with data?
     if(m_tenA_rbg >= (tot_A / 10) * 8) {
       load_A = 1;
     }
 
-    /* Is B loaded with data? */
+    // Is B loaded with data?
     if(m_tenB_rbg >= (tot_B / 10) * 8) {
       load_B = 1;
     }
@@ -674,15 +620,15 @@ void ran_duodynamic_tsched::schedule(
      * Take decision of what to do now...
      */
 
-    /* A and B are not loaded */
+    // A and B are not loaded
     if(!load_A && !load_B) {
-      /* Reset to 50/50 situation */
+      // Reset to 50/50 situation
       m_switch = 7;
-      /* What to do? Stay still? */
+      // What to do? Stay still?
       goto cont;
     }
 
-    /* A is loaded and B not */
+    // A is loaded and B not
     if(load_A && !load_B) {
       if(m_switch < m_rbg_max - m_limit) {
         m_switch++;
@@ -691,7 +637,7 @@ void ran_duodynamic_tsched::schedule(
       goto cont;
     }
 
-    /* B is loaded and A not */
+    // B is loaded and A not
     if(load_B && !load_A) {
       if(m_switch > m_limit) {
         m_switch--;
@@ -700,15 +646,15 @@ void ran_duodynamic_tsched::schedule(
       goto cont;
     }
 
-    /* Both are loaded */
+    // Both are loaded
     if(load_A && load_B) {
-      /* Reset to 50/50 situation */
+      // Reset to 50/50 situation
       m_switch = 7;
     }
 
 cont:
 
-    /* Reset */
+    // Reset
     m_win_slot  = 0;
     m_tenA_rbg  = 0;
     m_tenB_rbg  = 0;
@@ -734,14 +680,13 @@ dl_metric_ran::dl_metric_ran()
   m_tti_rbg_left  = 0;
   m_tti_rbg_start = 0;
   m_ctrl_sym      = 0;
-  m_tenant_id     = 1;
   m_log           = 0;
-  m_tenant_sched  = 0;
+  m_slice_sched   = 0;
   m_max_rbg       = 0;
   m_rbg_size      = 0;
   
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
-    m_tti_rbg[i]  = 0;
+    m_tti_rbg[i]  = false;
     m_tti_users[i]= 0;
   }
 }
@@ -751,36 +696,233 @@ void dl_metric_ran::init(srslte::log * log_handle)
   m_log        = log_handle;
 #ifdef RAN_TRACE
   m_rtd.logger = log_handle;
-#endif /* RAN_TRACE */
+#endif // RAN_TRACE
 
-  /* Do not use static scheduler yet... must be carefully debugged first */
-  //m_tenant_sched = new ran_static_tsched();
-  m_tenant_sched = new ran_duodynamic_tsched();
+  pthread_spin_init(&m_lock, 0);
 
-  /* Adds the special tenant 1.
-   * All UE belongs to tenant 1 at the start, and this allows them to complete
+  m_slice_sched = new ran_duodynamic_ssched();
+
+  /* Adds the special slice 1.
+   * All UE belongs to slice 1 at the start, and this allows them to complete
    * connection procedures.
    */
-  m_tenant_map[RAN_TENANT_STARTING].plmn       = 0x000000;
-  m_tenant_map[RAN_TENANT_STARTING].sched_user = new ran_rr_usched();
+  //m_slice_map[RAN_SLICE_STARTING].sched_user = new ran_rr_usched();
 
-
-/* TO REMOVE --------------------------------------------------------------------------> */
-  /* NOTE:
-   * This part of the code is here to test duodynamic Tenant scheduler without
-   * any controller support. This part is hard-coded.
-   */
-
-   m_tenant_map[2].plmn = 0x222f93;
-   m_tenant_map[2].sched_user = new ran_rr_usched();
-
-   m_tenant_map[3].plmn = 0x222f93;
-   m_tenant_map[3].sched_user = new ran_rr_usched();
-/* <------------------------------------------------------------------------- UNTIL HERE */
+#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
+  m_slice_map[2L].sched_user = new ran_rr_usched();
+#endif /* <------------------------------------------------------------------------------------------------- */
 }
 
+int  dl_metric_ran::add_slice(uint64_t id)
+{
+  pthread_spin_lock(&m_lock);
+
+  if(m_slice_map.count(id) != 0) {
+    Error("Slice %" PRIu64 " already existing in the MAC scheduler\n", id);
+    
+    pthread_spin_unlock(&m_lock);  
+    return -1;
+  }
+
+  // Creates the slice and assign a default RR user scheduler to it
+  m_slice_map[id].sched_user = new ran_rr_usched();
+
+//------------------------------------------------------------------------------ TEMPORARY!
+  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenA != id) {
+    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = id;
+printf("Second slice is %" PRIu64 "\n", ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB);
+  }
+
+//------------------------------------------------------------------------------ TEMPORARY!
+
+  pthread_spin_unlock(&m_lock);
+
+  Info("Slice %" PRIu64 " added to RAN MAC scheduler\n", id);
+
+  return 0;
+}
+
+void dl_metric_ran::rem_slice(uint64_t id)
+{
+  ran_user_scheduler *  us;
+  slice_map_t::iterator it;
+
+  if(id == RAN_SLICE_STARTING) {
+    Error("Cannot remove the default slice\n");
+    return;
+  }
+
+  pthread_spin_lock(&m_lock);
+
+  it = m_slice_map.find(id);
+
+  if(it == m_slice_map.end()) {
+    Error("Slice %" PRIu64 "not found in the MAC scheduler\n", id);
+
+    pthread_spin_unlock(&m_lock);
+    return;
+  }
+
+//------------------------------------------------------------------------------ TEMPORARY!
+  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenB == id) {
+    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = 0L;
+  }
+//------------------------------------------------------------------------------ TEMPORARY!
+
+  us = it->second.sched_user;
+  m_slice_map.erase(it);
+
+  pthread_spin_unlock(&m_lock);
+
+  // Delete the class instance 
+  delete us;
+
+  Info("Slice %" PRIu64 " removed from RAN MAC scheduler\n", id);
+
+  return;
+}
+
+int dl_metric_ran::set_slice(uint64_t id, mac_set_slice_args * args)
+{
+  char value[64] = { 0 };
+
+  /* 
+   *
+   * IMPORTANT: This is specific to Dynamic Duo!
+   * 
+   */
+
+  sprintf(value, "%" PRIu64 ",%d", id, args->rbg);
+
+  // Feed the argument to the scheduler 
+  return m_slice_sched->set_param(
+    (char *)"rbg", 4, value, strnlen(value, 64));
+}
+
+int  dl_metric_ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
+{
+  std::list<uint16_t>::iterator it;
+
+  pthread_spin_lock(&m_lock);
+
+  if(m_slice_map.count(slice) == 0) {
+    Error("Slice %" PRIu64 " does not exists in the MAC scheduler\n", slice);
+    
+    pthread_spin_unlock(&m_lock);  
+    return -1;
+  }
+
+  // The user has been associated by the agent, so do not handle by yourself
+  m_user_map[rnti].self_m = !lock;
+  m_slice_map[slice].users[rnti] = 1;
+
+  Info("User %d associated to slice %" PRIu64 "\n", rnti, slice);
+
+  pthread_spin_unlock(&m_lock);
+
+  return 0;
+}
+
+void dl_metric_ran::rem_slice_user(uint16_t rnti, uint64_t slice)
+{
+  //std::map<uint16_t>::iterator it;
+  slice_map_t::iterator        si;
+  pthread_spin_lock(&m_lock);
+
+  // Remove from any slice
+  if(slice == 0) {
+    // Remove any instance of that user 
+    for(si = m_slice_map.begin(); si != m_slice_map.end(); ++si) {
+      if(si->second.users.count(rnti) > 0) {
+        si->second.users.erase(rnti);
+printf("SCHED: Removing user %d from slice %" PRIu64 "\n", rnti, si->first);
+      }
+    }
+  }
+  // Remove from a specific slice
+  else {
+    m_slice_map[slice].users.erase(rnti);
+printf("SCHED: Removing user %d from slice %" PRIu64 "\n", rnti, slice);
+  }
+
+  if(m_user_map.count(rnti) > 0) {
+    // The user has been associated by the agent, so do not handle by yourself
+    //m_user_map[rnti].self_m = !lock;
+    m_user_map.erase(rnti);
+    m_slice_map[slice].users.erase(rnti);
+
+    Info("Slice %d removed from slice %" PRIu64 "\n", rnti, slice);
+  }
+
+  pthread_spin_unlock(&m_lock);
+
+  return;
+}
+#if 0
+void dl_metric_ran::get_user_info(
+  uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users)
+{
+  slice_map_t::iterator         ti;
+  std::list<uint16_t>::iterator ui;
+
+  pthread_rwlock_rdlock(&m_lock);
+
+  // Collect info for every active slice in the system 
+  for (ti = m_slice_map.begin(); ti != m_slice_map.end(); ++ti) {
+    for (ui = ti->second.users.begin(); ui != ti->second.users.end(); ++ui) {
+      // We are looking for every information in our data
+      if(rnti == 0) {
+        users[*ui].push_back(ti->first);
+      } else {
+        // We are looking for a specific RNTI
+        if(rnti == *ui) {
+          users[*ui].push_back(ti->first);
+        }
+      }
+    }
+  }
+  
+  pthread_rwlock_unlock(&m_lock);
+
+  return;
+}
+#endif
+uint32_t dl_metric_ran::get_slice_sched_id()
+{
+  return m_slice_sched->m_id;
+}
+
+int dl_metric_ran::get_slice_info(uint64_t id,  mac_set_slice_args * args)
+{
+  char value[64] = { 0 };
+
+  /* 
+   *
+   * IMPORTANT: This is specific to Dynamic Duo!
+   * 
+   */
+
+  sprintf(value, "%" PRIu64 ",", id);
+
+  if(m_slice_map.count(id) == 0) {
+    Error("Slice %" PRIu64 " not found in the MAC scheduler\n", id);
+    return -1;
+  }
+
+  args->user_sched = m_slice_map[id].sched_user->m_id;
+  args->rbg        = (uint16_t)m_slice_sched->get_param(
+    (char *)"rbg", 4, value, strnlen(value, 64));
+
+  // Do not handle users; will be set by upper layers
+  args->nof_users  = 0;
+
+  return 0;
+}
+
+#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
 uint16_t ue_a = 0;
 uint16_t ue_b = 0;
+#endif /* <------------------------------------------------------------------------------------------------- */
 
 void dl_metric_ran::new_tti(
   std::map<uint16_t, sched_ue> &ue_db,
@@ -794,7 +936,7 @@ void dl_metric_ran::new_tti(
   uint32_t       has_data = 0;
   dl_harq_proc * has_harq = 0;
 
-  tenant_map_t::iterator                 ti;
+  slice_map_t::iterator                  ti;
   std::list<uint16_t>::iterator          ui;
   std::map<uint16_t, sched_ue>::iterator iter;
 
@@ -841,98 +983,129 @@ void dl_metric_ran::new_tti(
    */
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (i < start_rbg) {
-      m_tti_rbg[i] = true;   /* In use */
+      m_tti_rbg[i] = true;   // In use
     } else {
       if (i >= start_rbg + nof_rbg) {
-        m_tti_rbg[i] = true; /* In use */
+        m_tti_rbg[i] = true; // In use
       } else {
-        m_tti_rbg[i] = false;/* Can be used */
+        m_tti_rbg[i] = false;// Can be used
       }
     }
   }
 
-  /* Reset the users of the starting tenant */
-  m_tenant_map[RAN_TENANT_STARTING].users.clear();
+  
 
-  /* Reset the situation of the current sub-frame */
-  memset(m_tti_users, 0, sizeof(uint32_t) * RAN_DL_MAX_RGB);
+#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
+  // Nothing, do not remove users...
+#else
+  // Reset the users of the starting slice
+  //m_slice_map[RAN_SLICE_STARTING].users.clear();
+#endif /* <------------------------------------------------------------------------------------------------- */
 
-  /* Save for each user its own RNTI */
+  // Reset the situation of the current sub-frame
+  for (i = 0; i < RAN_DL_MAX_RGB; i++) {
+    m_tti_users[i] = 0;
+  }
+
+  // Save for each user its own RNTI
   for (iter = ue_db.begin(); iter != ue_db.end(); ++iter) {
     user = (sched_ue *)&iter->second;
 
-    /* Save this user RNTI */
+    // Save this user RNTI
     user->ue_idx = (uint32_t)iter->first;
 
     has_data = user->get_pending_dl_new_data(m_tti);
     has_harq = user->get_pending_dl_harq(m_tti);
 
-    /* Add or update an UE entry */
+    pthread_spin_lock(&m_lock);
+
+    // Add or update an UE entry
     if (m_user_map.count(iter->first) == 0) {
+      m_user_map[iter->first].self_m        = 1;
       m_user_map[iter->first].last_seen     = m_tti_abs;
       m_user_map[iter->first].DL_data       = 0;
       m_user_map[iter->first].DL_data_delta = 0;
     } else {
-      /* 5 seconds timeout, then free that user resources */
+      // Out for 5 frames? Consider it as out
       if (m_tti_abs - m_user_map[iter->first].last_seen > 5000) {
-        m_user_map.erase(iter->first);
+        m_user_map[iter->first].self_m        = 1;
+        m_user_map[iter->first].last_seen     = m_tti_abs;
+        m_user_map[iter->first].DL_data       = 0;
+        m_user_map[iter->first].DL_data_delta = 0;
       }
       else {
-        /* Save the TTI where we saw this user last time */
+        // Save the TTI where we saw this user last time
         m_user_map[iter->first].last_seen = m_tti_abs;
       }
     }
 
-    /* Everyone belongs to starting tenant */
-    //m_tenant_map[RAN_TENANT_STARTING].users.push_back(iter->first);
-
+#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
     /* Perform cleanup operations to remove RNTIs which are no more handled by 
      * the MAC layer
      */
-    for (ti = m_tenant_map.begin(); ti != m_tenant_map.end(); ++ti) {
+    for (ti = m_slice_map.begin(); ti != m_slice_map.end(); ++ti) {
       for (ui = ti->second.users.begin(); ui != ti->second.users.end(); ++ui) {
         if (ue_db.count(*ui) == 0) {
-/* TO REMOVE --------------------------------------------------------------------------> */
-/* Static configuration of duodynamic scheduler */
           if (*ui == ue_a) {
             ue_a = 0;
           }
-
           if (*ui == ue_b) {
             ue_b = 0;
           }
-/* <------------------------------------------------------------------------- UNTIL HERE */
-          Warning("UE %x removed from tenant %ld\n", *ui, ti->first);
+          Warning("UE %x removed from tenant %" PRIu64 "\n", *ui, ti->first);
           ui = ti->second.users.erase(ui);
         }
       }
     }  
 
-/* TO REMOVE --------------------------------------------------------------------------> */
-    /* Static configuration of duo-dynamic scheduler */
     /* Assign the UE_a if not already stored in UE_b*/
     if (!ue_a && iter->first != ue_b) {
       ue_a = iter->first;
-      m_tenant_map[2].users.push_back(ue_a);
-      Warning("UE %x assigned to tenant %ld\n", ue_a, 2L);
+      m_slice_map[RAN_SLICE_STARTING].users.push_back(ue_a);
+      Warning("UE %x assigned to tenant %" PRIu64 "\n", ue_a, RAN_SLICE_STARTING);
     } else {
       if (!ue_b && iter->first != ue_a) {
         ue_b = iter->first;
-        //m_tenant_map[2].users.push_back(ue_b);
-        m_tenant_map[3].users.push_back(ue_b);
-        Warning("UE %x assigned to tenant %ld\n", ue_b, 3L);
+        m_slice_map[2L].users.push_back(ue_b);
+        Warning("UE %x assigned to tenant %" PRIu64 "\n", ue_b, 2L);
       }
     }
-/* <------------------------------------------------------------------------- UNTIL HERE */
+#else
+    /*
+    // Everyone which is not managed belongs to the default slice 
+    if(m_user_map[iter->first].self_m) {
+      for(
+        ui = m_slice_map[RAN_SLICE_STARTING].users.begin();
+        ui = m_slice_map[RAN_SLICE_STARTING].users.end();
+        ++ui) 
+        {
+          if(ui == iter->first) {
+            break;
+          }
+        }
+
+      // Add only whoever is not already present thus
+      if(ui == m_slice_map[RAN_SLICE_STARTING].users.end()){
+        m_slice_map[RAN_SLICE_STARTING].users.push_back(iter->first);
+      }
+    }
+    */
+  if(m_user_map.count(iter->first) == 0) {
+    m_user_map[iter->first].self_m = 1;
+    m_slice_map[RAN_SLICE_STARTING].users[iter->first] = 1;
+  }
+  
+  pthread_spin_unlock(&m_lock);
+
+#endif /* <------------------------------------------------------------------------------------------------- */
   }
 
-  if (m_tenant_sched) {
-    /* Finally run the schedulers */
-    m_tenant_sched->schedule(
-      m_tti, &m_tenant_map, &m_user_map, m_tti_rbg, m_tti_users);
+  if (m_slice_sched) {
+    // Finally run the schedulers
+    m_slice_sched->schedule(
+      m_tti, &m_slice_map, &m_user_map, m_tti_rbg, m_tti_users);
   }
 
-  /* Tracing mechanism triggered, eventually... */
   rtrace_new_tti(&this->m_rtd);
 }
 
@@ -956,17 +1129,17 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
   dl_harq_proc * harq_new;
   dl_harq_proc * harq_ret  = user->get_pending_dl_harq(m_tti);
 
-  /* Prepare the mask where this user has the right to allocate data in */
+  // Prepare the mask where this user has the right to allocate data in
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (m_tti_users[i] == rnti) {
       ualloc[i] = true;
-      nof_rbg++; /* Count the number of RBG in the meantime. */
+      nof_rbg++; // Count the number of RBG in the meantime.
     } else {
       ualloc[i] = false;
     }
   }
 
-  /* This user is not present, so stop here */
+  // This user is not present, so stop here
   if (nof_rbg == 0) {
     m_user_map[rnti].DL_rbg_delta  = 0;
 
@@ -982,7 +1155,7 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
    *
    */
 
-  /* Process any active HARQ first */
+  // Process any active HARQ first
 #if ASYNC_DL_SCHED
   if (harq_ret) {
 #else
@@ -1003,7 +1176,7 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
       return harq_ret;
     }
 
-    /* Slots are not similar, so count how many RBG we need */
+    // Slots are not similar, so count how many RBG we need
     nof_h_rbg = count_rbg(h_mask);
 
     /*
@@ -1016,7 +1189,7 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
     if (nof_h_rbg <= nof_rbg) {
       rbg_valid = new_allocation(nof_h_rbg, ualloc, &h_mask);
 
-      /* Accumulate how many RBG have been consumed */
+      // Accumulate how many RBG have been consumed
       m_user_map[rnti].DL_rbg_delta = rbg_valid;
 
       harq_ret->set_rbgmask(h_mask);
@@ -1120,7 +1293,7 @@ bool dl_metric_ran::allocation_is_valid(uint32_t base, uint32_t mask)
         return (mask == base);
 }
 
-/* Count how many PRBG are in use in a bits-mask. */
+// Count how many PRBG are in use in a bits-mask.
 uint32_t dl_metric_ran::count_rbg(uint32_t mask)
 {
   uint32_t count = 0; 
@@ -1147,11 +1320,11 @@ int dl_metric_ran::new_allocation(
     uint32_t i;
     int      t;
 
-    /* Operate on the existing mask of PRBG. */
+    // Operate on the existing mask of PRBG.
     for (i = 0, t = 0; i < RAN_DL_MAX_RGB; i++) {
-        /* If can be used, then mark a possible PRBG as consumed */
+        // If can be used, then mark a possible PRBG as consumed
         if (rbg_mask[i]) {
-          /* We need the RBG? */
+          // We need the RBG?
           if(nof_rbg > 0) {
             t++;
             nof_rbg--;
@@ -1163,275 +1336,8 @@ int dl_metric_ran::new_allocation(
         *final_mask = calc_rbg_mask(rbg_mask);
     }
 
-    /* How many PRBG have been selected? */
+    // How many PRBG have been selected?
     return t;
 }
 
-uint32_t dl_metric_ran::add_tenant(uint32_t plmnid)
-{
-  uint32_t r = m_tenant_id + 1;
-
-  /* Next addition will be done with different id */
-  m_tenant_id++;
-
-  /* Yes, I do handle multiple Tenants with the same PLMN id */
-  m_tenant_map[r].plmn = plmnid;
-
-  Info("Adding tenant %d, PLMN ID=%x\n", r, m_tenant_map[r].plmn);
-  
-  return r;
-}
-
-int dl_metric_ran::rem_tenant(uint64_t plmnid)
-{
-  tenant_map_t::iterator i;
-
-  /* Removes any tenant with such PLMN ID */
-  for (i = m_tenant_map.begin(); i != m_tenant_map.end(); ++i) {
-    if(i->second.plmn == plmnid) {
-      //Info("Removing tenant %d\n", i->first);
-      m_tenant_map.erase(i);
-    }
-  }
-
-  return 0;
-}
-
-int dl_metric_ran::add_user(uint16_t rnti, uint64_t tenant)
-{
-  std::list<uint16_t>::iterator i;
-
-  if (m_tenant_map.count(tenant) == 0) {
-    Error("Cannot add user %x, Tenant %ld does not exists\n", rnti, tenant);
-    return -1;
-  }
-
-  /* Do not add duplicates */
-  for (i = m_tenant_map[tenant].users.begin(); i != m_tenant_map[tenant].users.end(); ++i) {
-    if (*i == rnti) {
-      return 0;
-    }
-  }
-
-  m_tenant_map[tenant].users.push_back(rnti);
-
-  //Warning("User %x added to tenant %d\n", rnti, tenant);
-
-  return 0;
-}
-
-int dl_metric_ran::rem_user(uint16_t rnti, uint64_t tenant)
-{
-  std::list<uint16_t>::iterator i;
-
-  if (m_tenant_map.count(tenant) == 0) {
-    Error("Cannot remove user %x, Tenant %ld does not exists\n", rnti, tenant);
-    return -1;
-  }
-
-  for (i = m_tenant_map[tenant].users.begin(); i != m_tenant_map[tenant].users.end(); ++i) {
-    /* Delete the first element with such RNTI value */
-    if(*i == rnti) {
-      break;
-    }
-  }
-
-  if (i != m_tenant_map[tenant].users.end()) {
-    m_tenant_map[tenant].users.erase(i);
-  }
-
-  //Info("User %x removed from tenant %d\n", rnti, tenant);
-
-  return 0;
-}
-
-/******************************************************************************
- *                                                                            *
- *                        UL part of RAN scheduler                            *
- *                                                                            *
- ******************************************************************************/
-
-/*
- * Private procedures:
- */
-
-/* Check whatever a proposed allocation is possible or not */
-bool ul_metric_ran::allocation_is_valid(ul_harq_proc::ul_alloc_t alloc)
-{
-  uint32_t n;
-
-  /* Does it fit? */
-  if (alloc.RB_start + alloc.L > nof_rb) {
-    return false; 
-  }
-
-  /* Some PRBG are already in use? */
-  for (n = alloc.RB_start; n < alloc.RB_start + alloc.L; n++) {
-    if (used_rb[n]) {
-      return false; 
-    }
-  }
-
-  return true; 
-}
-
-/* Check whatever is possible to allocate L PRBs inside an UL allocation.
- * Returns 1 is all the L blocks can be fit, othersize 0.
- */
-bool ul_metric_ran::new_allocation(uint32_t L, ul_harq_proc::ul_alloc_t * alloc)
-{
-  uint32_t n;
-
-  bzero(alloc, sizeof(ul_harq_proc::ul_alloc_t));
-
-  for (n = 0; n < nof_rb && alloc->L < L; n++) {
-    /* Select the first not used PRB as start */
-    if (!used_rb[n] && alloc->L == 0) {
-      alloc->RB_start = n; 
-    }
-
-    /* Keep incrementing the allocation space as you find free slots... */
-    if (!used_rb[n]) {
-      alloc->L++; 
-    /* ... or else ... */
-    } else if (alloc->L > 0) {
-      /* Allocation is too small; start again seeking a bigger space */
-      if (n < 3) {
-        alloc->RB_start = 0; 
-        alloc->L = 0; 
-      } 
-      /* Allocation has already started, and do not fragment it: stop! */
-      else {
-        break;
-      }
-    }
-  }
-
-  /* Not possible to allocate something? */
-  if (!alloc->L) {
-    return 0; 
-  }
-  
-  /* Make sure L is allowed by SC-FDMA modulation */ 
-  while (!srslte_dft_precoding_valid_prb(alloc->L)) {
-    alloc->L--;
-  }
-
-  /* Can we fit the entire desired space? */
-  return alloc->L == L; 
-}
-
-/*
- * Public procedures:
- */
-
-/* Update current UL metric user RB taking in account the given allocation */
-void ul_metric_ran::update_allocation(ul_harq_proc::ul_alloc_t alloc)
-{
-  uint32_t n;
-
-  /* Does not fit */
-  if (alloc.L > available_rb) {
-    return; 
-  }
-
-  /* Not enough resources */
-  if (alloc.RB_start + alloc.L > nof_rb) {
-    return; 
-  }
-
-  for (n = alloc.RB_start; n < alloc.RB_start + alloc.L; n++) {
-    used_rb[n] = true;
-  }
-
-  available_rb -= alloc.L; 
-}
-
-/* Prepare for a new UL TTI computation */
-void ul_metric_ran::new_tti(
-  std::map<uint16_t,sched_ue> & ue_db, 
-  uint32_t                      nof_rb_, 
-  uint32_t                      tti)
-{
-  std::map<uint16_t, sched_ue>::iterator iter;
-  sched_ue * user;
-
-  current_tti  = tti;
-  nof_rb       = nof_rb_;
-  available_rb = nof_rb_;
-
-  bzero(used_rb, nof_rb * sizeof(bool));
-
-  nof_users_with_data = 0;
-
-  /* Assign to users with re-tx or data an index */
-  for(iter = ue_db.begin(); iter != ue_db.end(); ++iter) {
-    user = (sched_ue *)&iter->second;
-
-    if (user->get_pending_ul_new_data(current_tti) ||
-      !user->get_ul_harq(current_tti)->is_empty(0)) {
-
-      user->ue_idx = nof_users_with_data;
-      nof_users_with_data++;
-    }
-  }
-}
-
-/* Prepare an UL HARQ slot for the current user */
-ul_harq_proc * ul_metric_ran::get_user_allocation(sched_ue * user)
-{
-  uint32_t       pending_data = user->get_pending_ul_new_data(current_tti); 
-  ul_harq_proc * h            = user->get_ul_harq(current_tti);
-
-  ul_harq_proc::ul_alloc_t alloc;
-
-  uint32_t       pending_rb;
-
-  /* Using the previously assigned index, perform round-robin strategy based on
-   * the TTI.
-   */
-  if (pending_data || !h->is_empty(0)) {
-    if (nof_users_with_data) {
-      if ((current_tti % nof_users_with_data) != user->ue_idx) {
-        return NULL; 
-      }    
-    }    
-  }
-
-  /* Is there any HARQ slot still pending to re-tx? */
-  if (!h->is_empty(0)) {
-    alloc = h->get_alloc();
-    
-    /* Is it possible to use the same mask? */
-    if (allocation_is_valid(alloc)) {
-      update_allocation(alloc);
-
-      return h;
-    }
-    
-    /* Find out a new way to organize the data */
-    if (new_allocation(alloc.L, &alloc)) {
-      update_allocation(alloc);
-      h->set_alloc(alloc);
-
-      return h;
-    }
-  /* No pending re-tx, go for the new data */
-  } else {  
-    if (pending_data) {
-      pending_rb = user->get_required_prb_ul(pending_data);
-
-      new_allocation(pending_rb, &alloc);
-
-      if (alloc.L) {
-        update_allocation(alloc);
-        h->set_alloc(alloc);
-
-        return h;
-      }
-    }
-  }
-  return NULL; 
-}
-
-} /* namespace srsenb */
+} // namespace srsenb 

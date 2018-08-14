@@ -40,26 +40,24 @@
 #include "srsenb/hdr/upper/rrc.h"
 #include "srsenb/hdr/upper/rlc.h"
 #include "srsenb/hdr/upper/pdcp.h"
+#include "srsenb/hdr/ran/ran.h"
 
 namespace srsenb {
 
 class agent :
   public agent_interface_rrc,
-  public agent_interface_mac
+  public agent_interface_mac,
+  public agent_interface_ran
 {
 public:
   /* Initializes the agent with the layers to interact with.
    * Returns 0 on success, otherwise a negative error code.
    */
   virtual int init(
-    int             enb_id,
-    srslte::radio * rf,
-    srsenb::phy   * phy,
-    srsenb::mac   * mac,
-    srsenb::rlc   * rlc,
-    srsenb::pdcp  * pdcp,
-    srsenb::rrc   * rrc,
-    srslte::log   * logger) = 0;
+    int enb_id,
+    rrc_interface_agent * rrc,
+    ran_interface_agent * ran,
+    srslte::log * logger) = 0;
 
   /* Stops the agent processing and terminates it. */
   virtual void stop() = 0;

@@ -38,7 +38,8 @@
 #include <srslte/common/threads.h>
 
 #include <emage/emproto.h>
-#include "agent.h"
+
+#include "srsenb/hdr/agent/agent.h"
 
 namespace srsenb {
 
@@ -74,25 +75,27 @@ public:
   empower_agent();
   ~empower_agent();
 
-  unsigned int get_id();
+  unsigned int          get_id();
+  ran_interface_agent * get_ran();
 
-  int init(int             enb_id,
-           srslte::radio * rf,
-           srsenb::phy *   phy,
-           srsenb::mac *   mac,
-           srsenb::rlc *   rlc,
-           srsenb::pdcp *  pdcp,
-           srsenb::rrc *   rrc,
-           srslte::log *   logger);
+  int init(
+    int enb_id,
+    rrc_interface_agent *rrc,
+    ran_interface_agent * ran,
+    srslte::log * logger);
 
   /* Release any reserved resource. */
   void release();
 
+  /* Reset agent data and state machines to an starting value */
   int reset();
 
+  /* Request an UE report */
   int setup_UE_report(uint32_t mod_id, int trig_id);
+  /* Request a MAC report */
   int setup_MAC_report(uint32_t mod_id, uint32_t interval, int trig_id);
 
+  /* Request an UE measurement */
   int setup_UE_period_meas(
     uint32_t id,
     int      trigger_id,
@@ -102,6 +105,9 @@ public:
     uint16_t max_cells,
     uint16_t max_meas,
     int      interval);
+
+  /* Order the agent to report RAN slicer modification */
+  int setup_RAN_report(uint32_t mod);
 
   /* agent_interface_mac: */
 
@@ -172,45 +178,57 @@ private:
    * End class em_ue
    */
 
-  unsigned int       m_id;
+  unsigned int m_id;
 
-  srslte::radio *    m_rf;
-  srsenb::phy *      m_phy;
-  srsenb::mac *      m_mac;
-  srsenb::rlc *      m_rlc;
-  srsenb::pdcp *     m_pdcp;
-  srsenb::rrc *      m_rrc;
-  srslte::log *      m_logger;
+  //srslte::radio *    m_rf;
+  //srsenb::phy *      m_phy;
+  //srsenb::mac *      m_mac;
+  //srsenb::rlc *      m_rlc;
+  //srsenb::pdcp *     m_pdcp;
+  rrc_interface_agent * m_rrc;
+  ran_interface_agent * m_ran;
 
-  void *             m_args;
+  srslte::log * m_logger;
 
-  int                m_uer_feat;
-  int                m_uer_tr;
-  unsigned int       m_uer_mod;
+  void *        m_args; /* eNB arguments */
 
-  int                m_nof_ues;
+  int           m_uer_feat;
+  int           m_uer_tr;
+  unsigned int  m_uer_mod;
+
+  /* UE report variables */
+
+  int           m_nof_ues;
   std::map<uint16_t, em_ue *> m_ues;
-  int                m_ues_dirty;
+  int           m_ues_dirty;
 
-  macrep             m_macrep[EMPOWER_AGENT_MAX_MACREP];
+  /* MAC report variables: */
+  
+  macrep        m_macrep[EMPOWER_AGENT_MAX_MACREP];
+  uint32_t      m_DL_sf;
+  uint32_t      m_DL_prbs_used;
+  uint32_t      m_UL_sf;
+  uint32_t      m_UL_prbs_used;
 
-  uint32_t           m_DL_sf;
-  uint32_t           m_DL_prbs_used;
+  /* RAN report variables: */
 
-  uint32_t           m_UL_sf;
-  uint32_t           m_UL_prbs_used;
+  uint32_t      m_RAN_feat;
+  uint32_t      m_RAN_def_dirty;
+  uint32_t      m_RAN_mod;
 
   /* Thread: */
 
-  pthread_t          m_thread;
+  pthread_t m_thread;
   pthread_spinlock_t m_lock;
-  int                m_state;
+  int m_state;
 
   /* Utilities */
 
   void dirty_ue_check();
   void measure_check();
   void macrep_check();
+  void ran_check();
+
   int  prbs_from_dci(void * DCI, int dl, uint32_t cell_prbs);
   int  prbs_from_mask(int RA_format, uint32_t mask, uint32_t cell_prbs);
 

@@ -34,7 +34,7 @@
 
 #include <srslte/common/log_filter.h>
 
-#include "agent.h"
+#include "srsenb/hdr/agent/agent.h"
 
 namespace srsenb {
 
@@ -42,14 +42,11 @@ namespace srsenb {
 class dummy_agent : public agent
 {
 public:
-  int init(int             enb_id,
-           srslte::radio * rf,
-           srsenb::phy *   phy,
-           srsenb::mac *   mac,
-           srsenb::rlc *   rlc,
-           srsenb::pdcp *  pdcp,
-           srsenb::rrc *   rrc,
-           srslte::log *   logger);
+  int init(
+    int enb_id,
+    rrc_interface_agent * rrc,
+    ran_interface_agent * ran,
+    srslte::log * logger);
 
   void stop();
 

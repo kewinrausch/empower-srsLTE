@@ -25,19 +25,19 @@
 option(ENABLE_EMPOWER_AGENT  "Enable the use of EmPOWER Agent"     ON)
 
 if(ENABLE_EMPOWER_AGENT)
-  message(STATUS "Building srsENB with EmPOWER Agent.")
+  message(STATUS "Building srsENB with EmPOWER Agent")
   add_definitions(-DHAVE_EMPOWER_AGENT)
   
   find_package(Emagent)
   find_package(Emproto)
 endif(ENABLE_EMPOWER_AGENT)
 
-option(ENABLE_RAN_SCHEDULER  "Enable the RAN scheduler"            OFF)
+option(ENABLE_RAN_SLICER  "Enable the RAN slicer"                  OFF)
 
-if(ENABLE_RAN_SCHEDULER)
-  message(STATUS "Building srsENB with MAC RAN scheduler.")
-  add_definitions(-DHAVE_RAN_SCHED)
-endif(ENABLE_RAN_SCHEDULER)
+if(ENABLE_RAN_SLICER)
+  message(STATUS "Building srsENB with RAN slicer")
+  add_definitions(-DHAVE_RAN_SLICER)
+endif(ENABLE_RAN_SLICER)
 
 ########################################################################
 # Find dependencies

@@ -200,6 +200,9 @@ private:
 #else
   srsenb::dummy_agent agent;
 #endif /* HAVE_EMPOWER_AGENT */
+#ifdef HAVE_RAN_SLICER
+  srsenb::ran ran;
+#endif /* HAVE_RAN_SLICER */
 
   srslte::logger_stdout logger_stdout;
   srslte::logger_file   logger_file;
@@ -214,7 +217,9 @@ private:
   srslte::log_filter  gtpu_log;
   srslte::log_filter  s1ap_log;
   srslte::log_filter  agent_log;
-
+#ifdef HAVE_RAN_SLICER
+  srslte::log_filter  ran_log;
+#endif /* HAVE_RAN_SLICER */
   srslte::byte_buffer_pool *pool;
 
   all_args_t       *args;

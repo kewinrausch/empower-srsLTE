@@ -40,7 +40,7 @@
 
 #include "srsenb/hdr/mac/scheduler.h"
 
-/* Decorators for arguments */
+// Decorators for arguments
 #define __ran_in_
 #define __ran_out_
 
@@ -60,12 +60,12 @@
 
 #define RAN_DL_MAX_RGB          25
 
-#define RAN_TENANT_INVALID      0
-#define RAN_TENANT_STARTING     1
+#define RAN_SLICE_INVALID       0
+#define RAN_SLICE_STARTING      9622457614860288L
 #define RAN_USER_INVALID        0
 
-/* Define/undefine this symbol to trace the RAN */
-#define RAN_TRACE
+// Define/undefine this symbol to trace the RAN
+//#define RAN_TRACE
 
 /* RAN tracing capabilities:
  *
@@ -82,35 +82,35 @@
 #define RTRACE_NOF_UMASKS               32
 #define RTRACE_NOF_MCS                  32
 
-/* Meaninful statistics for a specific user */
+// Meaninful statistics for a specific user
 typedef struct __ran_trace_users {
-  /* There has been some activities? */
+  // There has been some activities?
   bool active;
 
-  /* Allocated mask setup in the DL */
+  // Allocated mask setup in the DL
   uint32_t dl_rbg_masks[RTRACE_NOF_UMASKS];
-  /* How many time that mask was allocated */
+  // How many time that mask was allocated
   uint32_t dl_rbg_count[RTRACE_NOF_UMASKS];
-  /* MCS adopted when sending data on the DL */
+  // MCS adopted when sending data on the DL
   int dl_rbg_mcs[RTRACE_NOF_MCS];
 
 } rt_user;
 
-/* Statistics of the RAN scheduler */
+// Statistics of the RAN scheduler
 typedef struct __ran_trace_stats {
-  /* Number of TTIs for this data to consider */
+  // Number of TTIs for this data to consider
   uint32_t nof_tti;
 
-  /* Users-related statistics */
+  // Users-related statistics
   std::map<uint16_t, rt_user> users;
 } rt_stats;
 
-/* Master container for RAN tracing */
+// Master container for RAN tracing
 typedef struct __ran_trace_data {
-  /* Logger used to dump stats */
+  // Logger used to dump stats
   srslte::log * logger;
 
-  /* Useful statistics */
+  // Useful statistics
   rt_stats stats;
 } rt_data;
 
@@ -122,9 +122,9 @@ void ran_trace_DL_mask(rt_data * rtd, uint16_t rnti, uint32_t mask, int mcs);
 
 #else
 
-#define rtrace_new_tti(r)               /* ...into nothing */
-#define rtrace_dl_mask(r, n, m, c)      /* ...into nothing */
-#endif /* RAN_TRACE */
+#define rtrace_new_tti(r)               // ...into nothing
+#define rtrace_dl_mask(r, n, m, c)      // ...into nothing
+#endif // RAN_TRACE
 
 namespace srsenb {
 
@@ -136,42 +136,49 @@ namespace srsenb {
 
 class ran_user_scheduler;
 
-/* Single user of the RAN schedulers */
-class ran_user {
+// Single user of the RAN schedulers
+class ran_mac_user {
 public:
-  /* How many TTI's ago did we saw this one? */
+  // Managend locally by the scheduler
+  int      self_m;
+
+  // How many TTI's ago did we saw this one?
   uint32_t last_seen;
 
-  /* The amount of bytes exchanged in DL at MAC level */
+  // The amount of bytes exchanged in DL at MAC level
   uint64_t DL_data;
-  /* The amount of bytes exchanged in DL at MAC level during last TTI */
+  // The amount of bytes exchanged in DL at MAC level during last TTI
   uint32_t DL_data_delta;
-  /* The amount of PRBG used in DL at MAC level during last TTI */
+  // The amount of PRBG used in DL at MAC level during last TTI
   uint32_t DL_rbg_delta;
 };
 
 /* Type which describes the map of users information stored by the RAN
  * subsystem.
  */
-typedef std::map<uint32_t, ran_user> user_map_t;
+typedef std::map<uint32_t, ran_mac_user> user_map_t;
 
-/* How a Tenant is organized for the RAN scheduler logic */
-class ran_tenant {
+// How a Slice is organized for the RAN scheduler logic
+class ran_mac_slice {
 public:
-  /* PLMN associated to the tenant */
-  uint32_t             plmn;
+  // User scheduler associated with this slice
+  ran_user_scheduler *    sched_user;
 
-  /* User scheduler associated with this tenant */
-  ran_user_scheduler * sched_user;
-
-  /* Users of this tenant */
-  std::list<uint16_t>  users;
+  /* Users of this slice
+   *
+   * IMPORTANT:
+   * To avoid conflicts this should be organized in TTI views, since multiple 
+   * workers can access the same data (ASSUMPTION). Since also ue_db is shared 
+   * and no conflicts happens maybe everything is already managed somewhere in 
+   * the code, but worth noticing this in case of future errors.
+   */
+  std::map<uint16_t, int> users;
 };
 
-/* Type which describes the map of tenant information stored by the RAN 
+/* Type which describes the map of slices information stored by the RAN 
  * subsystem.
  */
-typedef std::map<uint64_t, ran_tenant> tenant_map_t;
+typedef std::map<uint64_t, ran_mac_slice> slice_map_t;
 
 /******************************************************************************
  *                                                                            *
@@ -179,9 +186,14 @@ typedef std::map<uint64_t, ran_tenant> tenant_map_t;
  *                                                                            *
  ******************************************************************************/
 
-/* Provides the root class for all the schedulers at RAN level, of any level */
+// Provides the root class for all the schedulers at RAN level, of any level
 class ran_scheduler {
 public:
+  virtual ~ran_scheduler() 
+  {
+    // Do nothing
+  }
+
   /* Gets a parameter value from the scheduler.
    *
    * NOTE: Value must be a pointer to an already allocated area of memory.
@@ -191,14 +203,14 @@ public:
    * Returns the length of the value string, or a negative value on error.
    */
   virtual int get_param(
-    /* Name of the parameter that need to be queried */
-    __ran_in_  const char *       name,
-    /* Size of the name parameter */
-    __ran_in_  const unsigned int nlen,
-    /* Buffer where the value will be written */
+    // Name of the parameter that need to be queried
+    __ran_in_  char *       name,
+    // Size of the name parameter
+    __ran_in_  unsigned int nlen,
+    // Buffer where the value will be written
     __ran_out_ char *             value,
-    /* Maximum buffer size of the value arguments */
-    __ran_in_  const unsigned int vlen) = 0;
+    // Maximum buffer size of the value arguments
+    __ran_in_  unsigned int vlen) = 0;
   
   /* Sets a parameter value of the scheduler.
    *
@@ -209,80 +221,101 @@ public:
    * Returns 0 on success, or a negative value on error.
    */
   virtual int set_param(
-    /* Name of the parameter that need to be queried */
-    __ran_in_  const char *       name,
-    /* Size of the name parameter */
-    __ran_in_  const unsigned int nlen,
-    /* Buffer where the value will be written */
-    __ran_out_ const char *       value,
-    /* Maximum buffer size of the value arguments */
-    __ran_in_  const unsigned int vlen) = 0;
+    // Name of the parameter that need to be queried
+    __ran_in_  char *       name,
+    // Size of the name parameter
+    __ran_in_  unsigned int nlen,
+    // Buffer where the value will be written
+    __ran_out_ char *       value,
+    // Maximum buffer size of the value arguments
+    __ran_in_  unsigned int vlen) = 0;
+
+  /* ID for the scheduler.
+   *
+   * Please notes that User-level scheduler for slices start with the most 
+   * significant bit as 1, while slice schedulers have it set to 0. This means 
+   * that user-level schedulers will be organized like 0x8.... , while 
+   * slice-level scheduler are organized as 0x0....
+   * 
+   * At the end this ID must be sync between controller and base station.
+   */
+  uint32_t m_id;
 };
 
 /* Provides the common shape for an User scheduler at RAN level.
  *
- * User schedulers are invoked after the tenant one, and organize users which 
- * belong to a common tenant.
+ * User schedulers are invoked after the slice one, and organize users which 
+ * belong to a common slice.
  *
  * Inputs:
  *    - TTI,    which subframe is scheduled.
- *    - tenant, Tenant which is currently scheduled.
- *    - rgb,    array of the usable PRBG in this subframe for the Tenant.
+ *    - slice,  Slice which is currently scheduled.
+ *    - rgb,    array of the usable PRBG in this subframe for the Slice.
  *
  * Output:
- *    The Tenant scheduler uses the given input arguments to polish the 'ret'
+ *    The Slice scheduler uses the given input arguments to polish the 'ret'
  *    array. This variable identifies group per group assignment of resources to
  *    User Equipments RNTI.
  */
 class ran_user_scheduler : public ran_scheduler {
 public:
-  /* Schedule Users following the implemented strategy */
+  virtual ~ran_user_scheduler() 
+  {
+    // Do nothing
+  }
+
+  // Schedule Users following the implemented strategy
   virtual void schedule(
-    /* The current Transmission Time Interval */
+    // The current Transmission Time Interval
     __ran_in_  const uint32_t     tti,
-    /* Tenant which is scheduling its users */
-    __ran_in_  ran_tenant *       tenant,
-    /* Map with active RAN users */
+    // Slice which is scheduling its users
+    __ran_in_  ran_mac_slice *    slice,
+    // Map with active RAN users
     __ran_in_  user_map_t *       umap,
     /* Boolens (1, 0) array of the resources available:
      * 1 means in use, 0 meas still available.
      */
     __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
-    /* Array of the assignment of resources to User Equipments */
+    // Array of the assignment of resources to User Equipments
     __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]) = 0;
 };
 
-/* Provides the commong shape for a Tenant scheduler at RAN level.
+/* Provides the commong shape for a Slice scheduler at RAN level.
  *
- * Tenant scheduler is invoked as the first one and organize the spectrum for
- * all the registered tenants of RAN subsystem.
+ * Slice scheduler is invoked as the first one and organize the spectrum for all
+ * the registered slices of RAN subsystem.
  *
  * Inputs:
  *    - TTI,  which subframe is scheduled.
- *    - tmap, map of the active tenants in the RAN subsystem.
+ *    - tmap, map of the active slices in the RAN subsystem.
  *    - rgb,  array of the usable PRBG in this subframe (the eNB can reserve 
  *            some resources for SIB or RAR messaging).
  *
  * Output:
- *    The Tenant scheduler uses the given input arguments to polish the 'ret'
+ *    The Slice scheduler uses the given input arguments to polish the 'ret'
  *    array. This variable identifies group per group assignment of resources to
  *    User Equipments RNTI.
  */
-class ran_tenant_scheduler : public ran_scheduler {
+class ran_slice_scheduler : public ran_scheduler {
 public:
-  /* Schedule Tenants following the implemented strategy */
+  virtual ~ran_slice_scheduler() 
+  {
+    // Do nothing
+  }
+
+  // Schedule Tenants following the implemented strategy
   virtual void schedule(
-    /* The current Transmission Time Interval */
+    // The current Transmission Time Interval
     __ran_in_  const uint32_t       tti,
-    /* Map with active RAN tenants */
-    __ran_in_        tenant_map_t * tmap,
-    /* Map with active RAN users */
+    // Map with active RAN tenants
+    __ran_in_        slice_map_t *  smap,
+    // Map with active RAN users
     __ran_in_        user_map_t *   umap,
     /* Boolens (1, 0) array of the resources available:
      * 1 means in use, 0 meas still available.
      */
     __ran_in_  bool                 rbg[RAN_DL_MAX_RGB],
-    /* Array of the assignment of resources to User Equipments */
+    // Array of the assignment of resources to User Equipments
     __ran_out_ uint16_t             ret[RAN_DL_MAX_RGB]) = 0;
 };
 
@@ -291,78 +324,42 @@ public:
  * Schedulers actually implemented for the RAN core:                          *
  *                                                                            *
  ******************************************************************************/
-#if 0
-/* Static Tenant resources assignment scheduler; see source for more info */
-class ran_static_tsched : public ran_tenant_scheduler {
-public:
-  ran_static_tsched();
 
-  /* Schedule the RAN Tenants following a given static map */
+// Dynamic Slice resources assignment scheduler; see source for more info
+class ran_duodynamic_ssched : public ran_slice_scheduler {
+public:
+  ran_duodynamic_ssched();
+  ~ran_duodynamic_ssched();
+
+  // Schedule the RAN Slices following a given static map
   void schedule(
     __ran_in_  const uint32_t     tti,
-    __ran_in_  tenant_map_t *     tmap,
+    __ran_in_  slice_map_t *      smap,
     __ran_in_  user_map_t *       umap,
     __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
     __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]);
 
-  /* Get a parameter from this scheduler */
+  // Get a parameter from this scheduler
   int get_param(
-    __ran_in_  const char *       name,
-    __ran_in_  const unsigned int nlen,
+    __ran_in_  char *       name,
+    __ran_in_  unsigned int nlen,
     __ran_out_ char *             value,
-    __ran_in_  const unsigned int vlen);
+    __ran_in_  unsigned int vlen);
 
-  /* Set a parameter of this scheduler */
+  // Set a parameter of this scheduler
   int set_param(
-    __ran_in_  const char *       name,
-    __ran_in_  const unsigned int nlen,
-    __ran_out_ const char *       value,
-    __ran_in_  const unsigned int vlen);
+    __ran_in_  char *       name,
+    __ran_in_  unsigned int nlen,
+    __ran_out_ char *       value,
+    __ran_in_  unsigned int vlen);
 
-private:
-  /* For multi-threading access race conditions between agent and scheduler */
-  pthread_mutex_t m_lock;
-  /* Map of tenants recognized */
-  uint64_t *      m_tenant_matrix;
-  /* Window in number of subframes */
-  uint32_t        m_win;
-};
-#endif
-/* Static Tenant resources assignment scheduler; see source for more info */
-class ran_duodynamic_tsched : public ran_tenant_scheduler {
-public:
-  ran_duodynamic_tsched();
-
-  /* Schedule the RAN Tenants following a given static map */
-  void schedule(
-    __ran_in_  const uint32_t     tti,
-    __ran_in_  tenant_map_t *     tmap,
-    __ran_in_  user_map_t *       umap,
-    __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
-    __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]);
-
-  /* Get a parameter from this scheduler */
-  int get_param(
-    __ran_in_  const char *       name,
-    __ran_in_  const unsigned int nlen,
-    __ran_out_ char *             value,
-    __ran_in_  const unsigned int vlen);
-
-  /* Set a parameter of this scheduler */
-  int set_param(
-    __ran_in_  const char *       name,
-    __ran_in_  const unsigned int nlen,
-    __ran_out_ const char *       value,
-    __ran_in_  const unsigned int vlen);
-
-private:
   uint32_t m_rbg_max;
 
-  /* This delimits which PRB group belongs to tenant B. By default tenant A
+  /* This delimits which PRB group belongs to slice B. By default slice A
    * starts from PRBG 0, and owns resources until switch, which identify where
-   * tenant B resources starts.
+   * slice B resources starts.
    *
-   * Tenant B then owns all the resources until the end of the spectrum.
+   * slice B then owns all the resources until the end of the spectrum.
    *
    * Just to have a picture of its behavior in mind:
    *
@@ -384,55 +381,55 @@ private:
    */
   bool     m_lock;
 
-  /* Minimum amount of PRBG that a Tenant is granted to have at any time.
-   */
+  // Minimum amount of PRBG that a slice is granted to have at any time.
   uint32_t m_limit;
 
-  /* Window in number of subframes */
+  // Window in number of subframes
   uint32_t m_win;
 
-  /* Tenant A ID */
+  // Slice A ID
   uint64_t m_tenA;
-  /* Tenant B ID */
+  // Slice B ID
   uint64_t m_tenB;
 
-  /* Slot for load monitoring */
+  // Slot for load monitoring
   uint32_t m_win_slot;
 
-  /* Number of PRBG userd by tenant A within window monitoring slot */
+  // Number of PRBG userd by Slice A within window monitoring slot
   uint32_t m_tenA_rbg;
-  /* Number of PRBG userd by tenant B within window monitoring slot */
+  // Number of PRBG userd by Slice B within window monitoring slot
   uint32_t m_tenB_rbg;
 };
 
 class ran_rr_usched : public ran_user_scheduler {
 public:
   ran_rr_usched();
+  ~ran_rr_usched();
 
-  /* Schedule the Tenant users in a RR fashion */
+  // Schedule the Slice users in a RR fashion
   void schedule(
     __ran_in_  const uint32_t     tti,
-    __ran_in_  ran_tenant *       tenant,
+    __ran_in_  ran_mac_slice *    slice,
     __ran_in_  user_map_t *       umap,
     __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
     __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]);
 
-  /* Get a parameter from this scheduler */
+  // Get a parameter from this scheduler
   int get_param(
-    __ran_in_  const char *       name,
-    __ran_in_  const unsigned int nlen,
+    __ran_in_  char *       name,
+    __ran_in_  unsigned int nlen,
     __ran_out_ char *             value,
-    __ran_in_  const unsigned int vlen);
+    __ran_in_  unsigned int vlen);
 
-  /* Set a parameter of this scheduler */
+  // Set a parameter of this scheduler
   int set_param(
-    __ran_in_  const char *       name,
-    __ran_in_  const unsigned int nlen,
-    __ran_out_ const char *       value,
-    __ran_in_  const unsigned int vlen);
+    __ran_in_  char *       name,
+    __ran_in_  unsigned int nlen,
+    __ran_out_ char *       value,
+    __ran_in_  unsigned int vlen);
 
 private:
-  /* Last scheduled RNTI/User */
+  // Last scheduled RNTI/User
   uint16_t m_last;
 };
 
@@ -443,14 +440,33 @@ class dl_metric_ran : public sched::metric_dl
 public:
 
 #ifdef RAN_TRACE
-  /* Data useful for tracing operation of the scheduler */
+  // Data useful for tracing operation of the scheduler
   rt_data  m_rtd;
-#endif /* RAN_TRACE */
+#endif // RAN_TRACE
 
   dl_metric_ran();
 
-  /* Perform initial setup of the scheduler */
+  // Perform initial setup of the scheduler
   void init(srslte::log * log_handle);
+
+  // Adds a new slice inside the MAC scheduler
+  int  add_slice(uint64_t id);
+  // Removes a slice from the MAC scheduler
+  void rem_slice(uint64_t id);
+  // Set the properties of a slice
+  int set_slice(uint64_t id, mac_set_slice_args * args);
+  // Adds a new slice user inside the MAC scheduler
+  int  add_slice_user(uint16_t rnti, uint64_t slice, int lock);
+  // Removes a slice user from the MAC scheduler
+  void rem_slice_user(uint16_t rnti, uint64_t slice);
+  // Returns the ID of the slice scheduler
+  uint32_t get_slice_sched_id();
+  // Returns information about a slice at MAC layer
+  int  get_slice_info(uint64_t id,  mac_set_slice_args * args);
+
+  /*
+   * metric_dl inherited functionalities
+   */
 
   void new_tti(
     std::map<uint16_t, sched_ue> &ue_db,
@@ -463,40 +479,38 @@ public:
 
 private:
 
-  /* Pointer to a loc mechanism to use for feedback */
+  // Pointer to a loc mechanism to use for feedback
   srslte::log *          m_log;
 
-  /* Current TTI index */
+  // Current TTI index
   uint32_t               m_tti;
   /* Absolute TTI starting from when started; this is an always incresing
    * value, so consider overflows.
    */
   uint32_t               m_tti_abs;
-  /* The RBG to start consider allocation from (reserved by someone else) */
+  // The RBG to start consider allocation from (reserved by someone else)
   uint32_t               m_tti_rbg_start;
-  /* Mask of the available PRBG in the current TTI */
+  // Mask of the available PRBG in the current TTI
   uint32_t               m_tti_rbg_mask;
-  /* Total amount of RB available in the current TTI */
+  // Total amount of RB available in the current TTI
   uint32_t               m_tti_rbg_total;
-  /* Mask of RBG status for the current TTI: 'true' in use, 'false' not used */
+  // Mask of RBG status for the current TTI: 'true' in use, 'false' not used
   bool                   m_tti_rbg[RAN_DL_MAX_RGB];
-  /* Available RBGs for this TTI */
+  // Available RBGs for this TTI
   uint32_t               m_tti_rbg_left;
 
-  /* Maximum number of RBG; this depends on the BW */
+  // Maximum number of RBG; this depends on the BW
   uint32_t               m_max_rbg;
-  /* size of the RBG */
+  // size of the RBG
   uint32_t               m_rbg_size;
 
-  /* Tenant scheduler currently running */
-  ran_tenant_scheduler * m_tenant_sched;
+  // Slice scheduler currently running
+  ran_slice_scheduler *  m_slice_sched;
 
-  /* Tenant map */
-  tenant_map_t           m_tenant_map;
-  /* Next tenant id */
-  uint32_t               m_tenant_id;
+  // Slice map
+  slice_map_t            m_slice_map;
 
-  /* User map */
+  // User map
   user_map_t             m_user_map;
 
   /* Array of TTI PRBG organization per user; OUTPUT of the schedulers.
@@ -504,80 +518,26 @@ private:
    */
   uint16_t               m_tti_users[RAN_DL_MAX_RGB];
 
-  /* Number of control symbols */
+  // Number of control symbols
   uint32_t               m_ctrl_sym;
 
-  /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   * EXTREMELY IMPORTANT:
-   *
-   * For some reason if the class is not big enough boost fail launching an 
-   * exception over an unintialized mutex, so keep this until the problem is
-   * solved.
-   *
-   * There is some serious issue with memory here, but this class does not seem
-   * to be the culprit, since this variable does NOTHING!
-   * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-   */
-  uint32_t               m_pad[RAN_DL_MAX_RGB];
+  // Lock synchronizing the criticial parts.
+  pthread_spinlock_t     m_lock;
 
-  /* Add a new tenant to the managed ones */
-  uint32_t add_tenant(uint32_t plmnid);
-
-  /* Removes a tenant from the scheduler */
-  int      rem_tenant(uint64_t plmnid);
-  
-  /* Associate an user to a specific tenant */
-  int      add_user(uint16_t rnti, uint64_t tenant);
-  
-  /* Removes an user from a specific tenant */
-  int      rem_user(uint16_t rnti, uint64_t tenant);
-
-  /* Compute RBG mask from array of booleans */
+  // Compute RBG mask from array of booleans
   uint32_t calc_rbg_mask(bool mask[RAN_DL_MAX_RGB]);
 
-  /* Check if is possible to allocate mask inside a base RGB setup */
+  // Check if is possible to allocate mask inside a base RGB setup
   bool     allocation_is_valid(uint32_t base, uint32_t mask);
 
-  /* Count how many groups are in use in the given mask */
+  // Count how many groups are in use in the given mask
   uint32_t count_rbg(uint32_t mask);
 
-  /* Fit some RBG in a mask and return the result */
+  // Fit some RBG in a mask and return the resul
   int      new_allocation(
     uint32_t nof_rbg, bool rbg_mask[RAN_DL_MAX_RGB], uint32_t * final_mask);
 
-}; /* class dl_metric_ran */
-
-/* UL RAN scheduler for MAC.
- *
- * This is actually just a copy of the default Round-Robin one.
- */
-class ul_metric_ran : public sched::metric_ul
-{
-public:
-  /* Prepare the scheduler for a new TTI */
-  void           new_tti(
-    std::map<uint16_t,sched_ue> &ue_db, uint32_t nof_rb, uint32_t tti);
-  
-  /* Get user allocation for the current TTI */
-  ul_harq_proc * get_user_allocation(sched_ue * user); 
-
-  /* Update the UL allocation */
-  void           update_allocation(ul_harq_proc::ul_alloc_t alloc);
-private:
-  
-  const static int MAX_PRB = 100; 
-  
-  bool new_allocation(uint32_t L, ul_harq_proc::ul_alloc_t *alloc);
-  bool allocation_is_valid(ul_harq_proc::ul_alloc_t alloc); 
-
-  uint32_t nof_users_with_data; 
-
-  bool used_rb[MAX_PRB]; 
-  uint32_t current_tti; 
-  uint32_t nof_rb; 
-  uint32_t available_rb;
-};
-
+}; // class dl_metric_ran
   
 }
 

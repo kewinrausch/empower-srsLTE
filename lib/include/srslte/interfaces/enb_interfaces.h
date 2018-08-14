@@ -35,6 +35,8 @@
 #include "srslte/asn1/liblte_s1ap.h"
 
 #include <vector>
+#include <list>
+#include <map>
 
 #ifndef SRSLTE_ENB_INTERFACES_H
 #define SRSLTE_ENB_INTERFACES_H
@@ -123,6 +125,26 @@ class mac_interface_rlc
 {
 public:   
   virtual int rlc_buffer_state(uint16_t rnti, uint32_t lc_id, uint32_t tx_queue, uint32_t retx_queue) = 0;  
+};
+
+typedef struct __mac_set_slice_args {
+  uint32_t   user_sched;
+  uint16_t   rbg;
+  uint16_t * users;
+  uint32_t   nof_users;
+} mac_set_slice_args;
+
+// MAC interface for RAN
+class mac_interface_ran
+{
+public:
+  virtual int      add_slice(uint64_t id) = 0;
+  virtual void     rem_slice(uint64_t id) = 0;
+  virtual int      set_slice(uint64_t id, mac_set_slice_args * args) = 0;
+  virtual int      add_slice_user(uint16_t rnti, uint64_t id, int lock) = 0;
+  virtual void     rem_slice_user(uint16_t rnti, uint64_t id) = 0;
+  virtual int      get_slice(uint64_t id, mac_set_slice_args * args) = 0;
+  virtual uint32_t get_slice_sched() = 0;
 };
 
 //RLC interface for MAC
@@ -277,13 +299,35 @@ public:
   // virtual void ue_capabilities(uint16_t rnti, LIBLTE_RRC_UE_EUTRA_CAPABILITY_STRUCT *caps) = 0;
 };
 
+typedef struct __ran_set_slice_args {
+  uint32_t   user_sched;
+  uint16_t   rbg;
+  uint16_t * users;
+  uint32_t   nof_users;
+} ran_set_slice_args;
+
+// RAN manager interface for Agent
+class ran_interface_agent
+{
+public:
+  virtual int      get_slices(uint16_t nof, uint64_t * slices) = 0;
+  virtual int      get_slice_info(uint64_t id, uint32_t * sched, uint16_t * prbs, uint16_t * users, uint32_t * nof_users) = 0;
+  virtual int      add_slice(uint64_t id, uint32_t plmn) = 0;
+  virtual void     rem_slice(uint64_t id) = 0;
+  virtual int      set_slice(uint64_t id, ran_set_slice_args * args) = 0;
+  virtual int      add_slice_user(uint16_t rnti, uint64_t slice, int lock) = 0;
+  virtual void     rem_slice_user(uint16_t rnti, uint64_t slice) = 0;
+  virtual void     get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users) = 0;
+  virtual uint32_t get_slice_sched() = 0;
+}; // ran_interface_agent
+
 // Agent interface for MAC
 class agent_interface_mac
 {
 public:
   virtual void process_DL_results(uint32_t tti, sched_interface::dl_sched_res_t * sched_result) = 0;
   virtual void process_UL_results(uint32_t tti, sched_interface::ul_sched_res_t * sched_result) = 0;
-};
+}; // agent_interface_mac
 
 // Agent interface for RRC
 class agent_interface_rrc
@@ -293,7 +337,13 @@ public:
   virtual void rem_user(uint16_t rnti) = 0;
 
   virtual void report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report) = 0;
-};
+}; // agent_interface_rrc
+
+// Agent manager interface for RAN
+class agent_interface_ran
+{
+public:
+}; // agent_interface_ran
 
 }
 

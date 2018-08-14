@@ -41,7 +41,7 @@
 #include "srslte/interfaces/enb_metrics_interface.h"
 #include "ue.h"
 
-#ifdef HAVE_RAN_SCHED
+#ifdef HAVE_RAN_SLICER
 #include "srsenb/hdr/mac/scheduler_RAN.h"
 #endif
 
@@ -61,7 +61,8 @@ typedef struct {
 class mac
     :public mac_interface_phy, 
      public mac_interface_rlc, 
-     public mac_interface_rrc,     
+     public mac_interface_rrc,
+     public mac_interface_ran,     
      public srslte::mac_interface_timers, 
      public pdu_process_handler
 {
@@ -107,8 +108,28 @@ public:
   /* Manages UE bearers and associated configuration */
   int bearer_ue_cfg(uint16_t rnti, uint32_t lc_id, sched_interface::ue_bearer_cfg_t *cfg); 
   int bearer_ue_rem(uint16_t rnti, uint32_t lc_id); 
+
+  /******** Interface from RLC (RLC -> MAC) ****************/ 
+
   int rlc_buffer_state(uint16_t rnti, uint32_t lc_id, uint32_t tx_queue, uint32_t retx_queue);
-    
+
+  /******** Interface from RAN (RAN -> MAC) ****************/ 
+
+  // Adds a new slice at MAC layer
+  int  add_slice(uint64_t id);
+  // Removes an existing slice from MAC layer
+  void rem_slice(uint64_t id);
+  // Set the properties of a slice 
+  int set_slice(uint64_t id, mac_set_slice_args * args);
+  // Adds a new slice user at MAC layer
+  int  add_slice_user(uint16_t rnti, uint64_t slice, int lock);
+  // Removes an existing slice user from MAC layer
+  void rem_slice_user(uint16_t rnti, uint64_t slice);
+  // Get the slice scheduler ID
+  uint32_t get_slice_sched();
+  // Get a slice MAC details
+  int  get_slice(uint64_t id, mac_set_slice_args * args);
+
   bool process_pdus(); 
 
   // Interface for upper-layer timers
@@ -144,14 +165,13 @@ private:
 
   /* Scheduler unit */
   sched            scheduler; 
-#if HAVE_RAN_SCHED
+#if HAVE_RAN_SLICER
   /* I keep the same name to preserve any reference around */
   dl_metric_ran    sched_metric_dl_ran;
-  ul_metric_ran    sched_metric_ul_ran;
-#else /* HAVE_RAN_SCHED */
+#else /* HAVE_RAN_SLICER */
   dl_metric_rr     sched_metric_dl_rr;
+#endif /* HAVE_RAN_SLICER */
   ul_metric_rr     sched_metric_ul_rr;
-#endif /* HAVE_RAN_SCHED */
 
   /* Map of active UEs */
   std::map<uint16_t, ue*> ue_db;   

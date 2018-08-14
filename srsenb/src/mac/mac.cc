@@ -80,12 +80,12 @@ bool mac::init(mac_args_t *args_, srslte_cell_t *cell_, phy_interface_mac *phy, 
     
     scheduler.init(rrc, agent, log_h);
 
-#ifdef HAVE_RAN_SCHED
-    scheduler.set_metric(&sched_metric_dl_ran, &sched_metric_ul_ran);
+#ifdef HAVE_RAN_SLICER
+    scheduler.set_metric(&sched_metric_dl_ran, &sched_metric_ul_rr);
     sched_metric_dl_ran.init(log_h);
-#else /* HAVE_RAN_SCHED */
+#else /* HAVE_RAN_SLICER */
     scheduler.set_metric(&sched_metric_dl_rr, &sched_metric_ul_rr);
-#endif /* HAVE_RAN_SCHED */
+#endif /* HAVE_RAN_SLICER */
 
     // Set default scheduler configuration 
     scheduler.set_sched_cfg(&args.sched);
@@ -146,6 +146,79 @@ void mac::start_pcap(srslte::mac_pcap* pcap_)
     ue *u = iter->second;
     u->start_pcap(pcap);
   }  
+}
+
+/********************************************************
+ *
+ * RAN interface 
+ *
+ *******************************************************/
+
+/*
+ * NOTE: Behavior is inhibit if no HAVE_RAN_SLICER symbol have been defined
+ */
+
+int  mac::add_slice(uint64_t id)
+{
+#ifndef HAVE_RAN_SLICER
+  return 0;
+#else
+  return sched_metric_dl_ran.add_slice(id);
+#endif
+}
+
+void mac::rem_slice(uint64_t id)
+{
+#ifndef HAVE_RAN_SLICER
+  return;
+#else
+  sched_metric_dl_ran.rem_slice(id);
+#endif
+}
+
+int mac::set_slice(uint64_t id, mac_set_slice_args * args)
+{
+#ifndef HAVE_RAN_SLICER
+  return 0;
+#else
+  return sched_metric_dl_ran.set_slice(id, args);
+#endif
+}
+
+int  mac::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
+{
+#ifndef HAVE_RAN_SLICER
+  return 0;
+#else
+  return sched_metric_dl_ran.add_slice_user(rnti, slice, lock);
+#endif
+}
+
+void mac::rem_slice_user(uint16_t rnti, uint64_t slice)
+{
+#ifndef HAVE_RAN_SLICER
+  return;
+#else
+  sched_metric_dl_ran.rem_slice_user(rnti, slice);
+#endif
+}
+
+uint32_t mac::get_slice_sched()
+{
+#ifndef HAVE_RAN_SLICER
+  return 0;
+#else
+  return sched_metric_dl_ran.get_slice_sched_id();
+#endif
+}
+
+int mac::get_slice(uint64_t id, mac_set_slice_args * args)
+{
+#ifndef HAVE_RAN_SLICER
+  return 0;
+#else
+  return sched_metric_dl_ran.get_slice_info(id, args);
+#endif
 }
 
 /********************************************************
@@ -221,7 +294,7 @@ int mac::ue_cfg(uint16_t rnti, sched_interface::ue_cfg_t* cfg)
 // Removes UE from DB
 int mac::ue_rem(uint16_t rnti)
 {
-  if (ue_db.count(rnti)) {         
+  if (ue_db.count(rnti)) {   
     scheduler.ue_rem(rnti);
     phy_h->rem_rnti(rnti);
     delete ue_db[rnti]; 

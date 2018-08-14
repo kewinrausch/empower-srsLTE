@@ -36,14 +36,11 @@ namespace srsenb {
  * Generic purposes procedures.                                               *
  ******************************************************************************/
 
-int dummy_agent::init(int             enb_id,
-                      srslte::radio * rf,
-                      srsenb::phy *   phy,
-                      srsenb::mac *   mac,
-                      srsenb::rlc *   rlc,
-                      srsenb::pdcp *  pdcp,
-                      srsenb::rrc *   rrc,
-                      srslte::log *   logger)
+int dummy_agent::init(
+    int enb_id,
+    rrc_interface_agent * rrc,
+    ran_interface_agent * ran,
+    srslte::log * logger)
 {
   return 0;
 }
@@ -83,7 +80,8 @@ void dummy_agent::rem_user(uint16_t rnti)
   return;
 }
 
-void dummy_agent::report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report)
+void dummy_agent::report_RRC_measure(
+  uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report)
 {
   return;
 }

@@ -106,6 +106,9 @@ bool enb::init(all_args_t *args_)
   gtpu_log.init("GTPU", logger);
   s1ap_log.init("S1AP", logger);
   agent_log.init("AGNT", logger);
+#ifdef HAVE_RAN_SLICER
+  ran_log.init("RAN", logger);
+#endif /* HAVE_RAN_SLICER */
 
   // Init logs
   rf_log.set_level(srslte::LOG_LEVEL_INFO);
@@ -119,6 +122,10 @@ bool enb::init(all_args_t *args_)
   gtpu_log.set_level(level(args->log.gtpu_level));
   s1ap_log.set_level(level(args->log.s1ap_level));
   agent_log.set_level(level(args->log.agent_level));
+#ifdef HAVE_RAN_SLICER
+  /* Intentionally inherits from the agent logging level */
+  ran_log.set_level(level(args->log.agent_level));
+#endif /* HAVE_RAN_SLICER */
 
   for (int i=0;i<args->expert.phy.nof_phy_threads;i++) {
     ((srslte::log_filter*) phy_log[i])->set_hex_limit(args->log.phy_hex_limit);
@@ -130,6 +137,10 @@ bool enb::init(all_args_t *args_)
   gtpu_log.set_hex_limit(args->log.gtpu_hex_limit);
   s1ap_log.set_hex_limit(args->log.s1ap_hex_limit);
   agent_log.set_hex_limit(args->log.agent_hex_limit);
+#ifdef HAVE_RAN_SLICER
+  /* Intentionally inherits from the agent hex level */
+  ran_log.set_hex_limit(args->log.agent_hex_limit);
+#endif /* HAVE_RAN_SLICER */
 
   // Set up pcap and trace
   if(args->pcap.enable)
@@ -229,7 +240,12 @@ bool enb::init(all_args_t *args_)
   rrc.init(&rrc_cfg, &phy, &mac, &rlc, &pdcp, &s1ap, &gtpu, &agent, &rrc_log);
   s1ap.init(args->enb.s1ap, &rrc, &s1ap_log);
   gtpu.init(args->enb.s1ap.gtp_bind_addr, args->enb.s1ap.mme_addr, &pdcp, &gtpu_log);
-  agent.init(args->enb.s1ap.enb_id, &radio, &phy, &mac, &rlc, &pdcp, &rrc, &agent_log);
+#ifdef HAVE_RAN_SLICER
+  agent.init(args->enb.s1ap.enb_id, &rrc, &ran, &agent_log);
+  ran.init(&mac, &ran_log);
+#else
+  agent.init(args->enb.s1ap.enb_id, &rrc, 0, &agent_log);
+#endif /* HAVE_RAN_SLICER */
 
   started = true;
   return true;

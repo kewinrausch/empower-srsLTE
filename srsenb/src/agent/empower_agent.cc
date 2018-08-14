@@ -29,10 +29,12 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -99,6 +101,8 @@ empower_agent::em_ue::em_ue()
  * Agent callback system.                                                     *
  ******************************************************************************/
 
+static void slice_feedback(uint32_t mod);
+
 /* NOTE: This can hold only one reference of agent. If you plan to go with more
  * consider using a map enb_id --> agent instance.
  */
@@ -157,10 +161,9 @@ static int ea_cell_setup(uint32_t mod, uint16_t pci)
 
 static int ea_enb_setup(uint32_t mod)
 {
-  char        buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  ep_enb_det  enbd;
-  int         blen;
-
+  char         buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  ep_enb_det   enbd;
+  int          blen;
   all_args_t * args  = enb::get_instance()->get_args();
 
   /* This eNB can report and measure UE on its cells */
@@ -168,6 +171,11 @@ static int ea_enb_setup(uint32_t mod)
 
   /* The cell can perform MAC layer resource reporting */
   enbd.cells[0].cap       = EP_CCAP_MAC_REPORT;
+
+#ifdef HAVE_RAN_SLICER
+  enbd.cells[0].cap       |= EP_CCAP_RAN_SLICING;
+#endif
+
   enbd.cells[0].pci       = (uint16_t)args->enb.pci;
   enbd.cells[0].DL_earfcn = (uint16_t)args->rf.dl_earfcn;
   enbd.cells[0].UL_earfcn = (uint16_t)args->rf.ul_earfcn;
@@ -200,12 +208,12 @@ static int ea_ue_measure(
   int16_t  max_cells,
   int16_t  max_meas)
 {
-  char        buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int         blen;
+  char buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int  blen;
 
   if(em_agent->setup_UE_period_meas(
-    measure_id, trig_id, rnti, mod, earfcn, max_cells, max_meas, interval)) {
-
+    measure_id, trig_id, rnti, mod, earfcn, max_cells, max_meas, interval)) 
+  {
     blen = epf_trigger_uemeas_rep_fail(
       buf,
       EMPOWER_AGENT_BUF_SMALL_SIZE,
@@ -234,16 +242,398 @@ static int ea_ue_report(uint32_t mod, int trig_id)
   return em_agent->setup_UE_report(mod, trig_id);
 }
 
+static int ea_ran_setup_request(uint32_t mod)
+{
+  char         buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int          blen;
+  ep_ran_det   det;
+  all_args_t * args  = enb::get_instance()->get_args();
+
+  printf("ea_ran_setup_request\n"); /* ----------------------------------------- Just for debugging; REMOVE! */
+
+#ifdef HAVE_RAN_SLICER
+  det.l1_mask = 0;
+  det.l2_mask = 0;
+  det.l3_mask = 0;
+  /* This should retrieved in a way like em_agent->ran_get_slice_id() */
+  det.l2.mac.slice_sched = 1;
+
+  blen = epf_single_ran_setup_rep(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod,
+    &det);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+
+#else
+  blen = epf_single_ran_setup_ns(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+#endif
+
+  return 0;
+}
+
+static int ea_slice_request(uint32_t mod, uint64_t slice)
+{
+  char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int              blen;
+  all_args_t *     args  = enb::get_instance()->get_args();
+  
+  uint16_t         i;
+  uint64_t         slices[32];
+  uint16_t         nof_slices;
+
+  ep_ran_slice_det det = {0};
+
+  printf("ea_slice_request %" PRIu64 "\n", slice); /* -------------------------- Just for debugging; REMOVE! */
+
+#ifdef HAVE_RAN_SLICER
+
+  if(slice > 0) {
+    det.nof_users = 16;
+
+    em_agent->get_ran()->get_slice_info(
+      slice, &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users);
+    
+    blen = epf_single_ran_slice_rep(
+      buf, 
+      EMPOWER_AGENT_BUF_SMALL_SIZE,
+      em_agent->get_id(),
+      (uint16_t)args->enb.pci,
+      mod,
+      slice,
+      &det);
+
+    if(blen > 0) {
+      em_send(em_agent->get_id(), buf, blen);
+    }
+
+    return 0;
+  }
+
+  em_agent->setup_RAN_report(mod);
+  
+  slice_feedback(mod);
+/*
+  nof_slices = em_agent->get_ran()->get_slices(32, slices);
+
+  if(nof_slices > 0) {
+    for(i = 0; i < nof_slices; i++) {
+      det.nof_users = 16;
+
+      if(em_agent->get_ran()->get_slice_info(
+        slices[i], &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users)) 
+      {
+          continue;
+      }
+
+      blen = epf_single_ran_slice_rep(
+        buf, 
+        EMPOWER_AGENT_BUF_SMALL_SIZE,
+        em_agent->get_id(),
+        (uint16_t)args->enb.pci,
+        mod,
+        slices[i],
+        &det);
+
+      if(blen > 0) {
+        em_send(em_agent->get_id(), buf, blen);
+      }
+    }
+  }
+  */
+#else
+  blen = epf_single_ran_slice_ns(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+#endif
+  return 0;
+}
+
+int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
+{
+  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int                blen;
+  int                i;
+  uint16_t           usr[32] = { 0 };
+  all_args_t *       args    = enb::get_instance()->get_args();
+  ran_set_slice_args ran_args= { 0 };
+
+  ep_ran_slice_det   sdet;
+
+  printf("ea_slice_add %" PRIu64 "\n", slice); /* ------------------------------ Just for debugging; REMOVE! */
+
+#ifdef HAVE_RAN_SLICER
+  // PLMN is used in the slice ID for this moment
+  if(em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff))) {
+printf(">>> Slice already exists... out\n");
+    return 0;
+  }
+
+  slice_feedback(mod);
+/*
+  ran_args.user_sched = conf->l2.user_sched;
+  ran_args.rbg        = conf->l2.rbg;
+
+  for(i = 0; i < conf->nof_users; i++) {
+    usr[i] = conf->users[i];
+  }
+  
+  ran_args.users     = usr;
+  ran_args.nof_users = conf->nof_users;
+
+  if(em_agent->get_ran()->set_slice(slice, &ran_args)) {
+    return 0;
+  }
+
+  // Get up to 16 users
+  sdet.nof_users = 16;
+
+  em_agent->get_ran()->get_slice_info(
+    slice, &sdet.l2.usched, &sdet.l2.rbgs, sdet.users, &sdet.nof_users);
+
+  blen = epf_single_ran_slice_rep(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod,
+    slice,
+    &sdet);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+*/
+#else // HAVE_RAN_SLICER
+  blen = epf_single_ran_slice_ns(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+#endif // HAVE_RAN_SLICER
+  return 0;
+}
+
+static int ea_slice_rem(uint32_t mod, uint64_t slice) 
+{
+  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int                blen;
+
+  printf("ea_slice_rem %" PRIu64 "\n", slice); /* ------------------------------ Just for debugging; REMOVE! */
+
+#ifdef HAVE_RAN_SLICER
+  em_agent->get_ran()->rem_slice(slice);
+  
+  slice_feedback(mod);
+  /*
+  blen = epf_single_ran_slice_ns(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }  
+  */
+#else // HAVE_RAN_SLICER
+  blen = epf_single_ran_slice_ns(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+#endif // HAVE_RAN_SLICER
+  return 0;
+}
+
+static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
+{
+  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int                blen;
+  int                i;
+  uint16_t           usr[32] = { 2 };
+  all_args_t *       args    = enb::get_instance()->get_args();
+  ran_set_slice_args ran_args;
+
+  uint64_t           slices[32];
+  uint16_t           nof_slices;
+
+  ep_ran_slice_det   sdet;
+
+  printf("slice_conf %" PRIu64 "\n", slice); /* -------------------------------- Just for debugging; REMOVE! */
+
+#ifdef HAVE_RAN_SLICER
+  
+  ran_args.user_sched = conf->l2.user_sched;
+  ran_args.rbg        = conf->l2.rbg;
+
+  for(i = 0; i < conf->nof_users; i++) {
+    //em_agent->get_ran()->add_slice_user(conf->users[i], slice, 1);
+    usr[i] = conf->users[i];
+  }
+  
+  ran_args.users     = usr;
+  ran_args.nof_users = conf->nof_users;
+
+  if(em_agent->get_ran()->set_slice(slice, &ran_args)) {
+    return 0;
+  }
+
+  slice_feedback(mod);
+/*
+  // Get up to 16 users
+  sdet.nof_users = 16;
+
+  nof_slices = em_agent->get_ran()->get_slices(32, slices);
+
+  if(nof_slices > 0) {
+    for(i = 0; i < nof_slices; i++) {
+      sdet.nof_users = 16;
+
+      em_agent->get_ran()->get_slice_info(
+        slices[i], &sdet.l2.usched, &sdet.l2.rbgs, sdet.users, &sdet.nof_users);
+
+      blen = epf_single_ran_slice_rep(
+        buf, 
+        EMPOWER_AGENT_BUF_SMALL_SIZE,
+        em_agent->get_id(),
+        (uint16_t)args->enb.pci,
+        mod,
+        slices[i],
+        &sdet);
+
+      if(blen > 0) {
+        em_send(em_agent->get_id(), buf, blen);
+      }
+    }
+  }
+*/
+  /*
+  em_agent->get_ran()->get_slice_info(
+    slice, &sdet.l2.usched, &sdet.l2.rbgs, sdet.users, &sdet.nof_users);
+
+  blen = epf_single_ran_slice_rep(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod,
+    slice,
+    &sdet);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+  */
+#else // HAVE_RAN_SLICER
+  blen = epf_single_ran_slice_ns(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+#endif // HAVE_RAN_SLICER
+  return 0;
+}
+
+// Send situation of all the slices
+static void slice_feedback(uint32_t mod)
+{ 
+  char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int              blen;
+  all_args_t *     args    = enb::get_instance()->get_args();
+
+  int              i;
+  uint64_t         slices[32];
+  uint16_t         nof_slices;
+  
+  ep_ran_slice_det det;
+
+  nof_slices = em_agent->get_ran()->get_slices(32, slices);
+
+  if(nof_slices > 0) {
+    for(i = 0; i < nof_slices; i++) {
+      det.nof_users = 16;
+
+      if(em_agent->get_ran()->get_slice_info(
+        slices[i], &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users)) 
+      {
+          continue;
+      }
+
+      blen = epf_single_ran_slice_rep(
+        buf, 
+        EMPOWER_AGENT_BUF_SMALL_SIZE,
+        em_agent->get_id(),
+        (uint16_t)args->enb.pci,
+        mod,
+        slices[i],
+        &det);
+
+      if(blen > 0) {
+        em_send(em_agent->get_id(), buf, blen);
+      }
+    }
+  }
+}
+
 static struct em_agent_ops empower_agent_ops = {
-  .init               = 0,
-  .release            = 0,
-  .disconnected       = ea_disconnected,
-  .cell_setup_request = ea_cell_setup,
-  .enb_setup_request  = ea_enb_setup,
-  .ue_report          = ea_ue_report,
-  .ue_measure         = ea_ue_measure,
-  .handover_UE        = 0,
-  .mac_report         = ea_mac_report,
+  0,                      /* init */
+  0,                      /* release */
+  ea_disconnected,        /* disconnected*/
+  ea_cell_setup,          /* cell_setup_request*/
+  ea_enb_setup,           /* enb_setup_request*/
+  ea_ue_report,           /* ue_report*/
+  ea_ue_measure,          /* UE measurement */
+  0,                      /* handover_UE*/
+  ea_mac_report,          /* mac_report*/
+
+  /*
+   * RAN Request operations
+   */
+  {
+    ea_ran_setup_request,   /* ran.setup_request */
+    ea_slice_request,       /* slice_request */
+    ea_slice_add,           /* slice_add */
+    ea_slice_rem,           /* slice_rem */
+    ea_slice_conf           /* slice_conf */
+  }
 };
 
 /******************************************************************************
@@ -252,35 +642,33 @@ static struct em_agent_ops empower_agent_ops = {
 
 empower_agent::empower_agent()
 {
-  m_id       = -1;
-  m_state    = AGENT_STATE_STOPPED;
+  m_id           = -1;
+  m_state        = AGENT_STATE_STOPPED;
 
-  m_rf       = 0;
-  m_phy      = 0;
-  m_mac      = 0;
-  m_rlc      = 0;
-  m_pdcp     = 0;
-  m_rrc      = 0;
-  m_logger   = 0;
+  m_rrc          = 0;
+  m_ran          = 0;
+  m_logger       = 0;
 
-  m_args     = 0;
+  m_args         = 0;
 
-  m_uer_mod  = 0;
-  m_uer_feat = 0;
-  m_uer_tr   = 0;
+  m_uer_mod      = 0;
+  m_uer_feat     = 0;
+  m_uer_tr       = 0;
 
-  m_ues_dirty= 0;
-  m_nof_ues  = 0;
+  m_ues_dirty    = 0;
+  m_nof_ues      = 0;
 
+  memset(m_macrep, 0, sizeof(macrep) *  EMPOWER_AGENT_MAX_MACREP);
   m_DL_prbs_used = 0;
   m_DL_sf        = 0;
-
   m_UL_prbs_used = 0;
   m_UL_sf        = 0;
 
-  memset(m_macrep, 0, sizeof(macrep) *  EMPOWER_AGENT_MAX_MACREP);
+  m_RAN_feat     = 0;
+  m_RAN_def_dirty= 0;
+  m_RAN_mod      = 0;
 
-  m_thread   = 0;
+  m_thread       = 0;
 }
 
 empower_agent::~empower_agent()
@@ -297,31 +685,28 @@ unsigned int empower_agent::get_id()
   return m_id;
 }
 
-int empower_agent::init(
-  int             enb_id,
-  srslte::radio * rf,
-  srsenb::phy *   phy,
-  srsenb::mac *   mac,
-  srsenb::rlc *   rlc,
-  srsenb::pdcp *  pdcp,
-  srsenb::rrc *   rrc,
-  srslte::log *   logger)
+ran_interface_agent * empower_agent::get_ran()
 {
-  if(!rf || !phy || !mac || !rlc || !pdcp || !rrc || !logger) {
+  return m_ran;
+}
+
+int empower_agent::init(
+  int enb_id, 
+  rrc_interface_agent * rrc, 
+  ran_interface_agent * ran, 
+  srslte::log * logger)
+{
+  if(!rrc || !logger) {
     return -EINVAL;
   }
 
-  m_id    = enb_id;
+  m_id = enb_id;
 
-  m_rf    = rf;
-  m_phy   = phy;
-  m_mac   = mac;
-  m_rlc   = rlc;
-  m_pdcp  = pdcp;
-  m_rrc   = rrc;
+  m_rrc = rrc;
+  m_ran = ran;
   m_logger= logger;
 
-  m_args  = enb::get_instance()->get_args();
+  m_args = enb::get_instance()->get_args();
 
   pthread_spin_init(&m_lock, 0);
 
@@ -349,7 +734,7 @@ int empower_agent::init(
 
 void empower_agent::release()
 {
-  //Info("Agent released\n");
+
 }
 
 int empower_agent::reset()
@@ -604,6 +989,15 @@ int empower_agent::setup_UE_period_meas(
   return 0;
 }
 
+int empower_agent::setup_RAN_report(uint32_t mod)
+{
+  m_RAN_feat      = 1;
+  m_RAN_def_dirty = 0;
+  m_RAN_mod       = mod;
+
+  return 0;
+}
+
 /******************************************************************************
  * agent_interface_mac.                                                       *
  ******************************************************************************/
@@ -663,7 +1057,7 @@ void empower_agent::add_user(uint16_t rnti)
   it = m_ues.find(rnti);
 
   if(it == m_ues.end()) {
-     m_ues.insert(std::make_pair(rnti, new em_ue()));
+    m_ues.insert(std::make_pair(rnti, new em_ue()));
     m_nof_ues++;
 
     m_ues[rnti]->m_plmn  = (args->enb.s1ap.mcc & 0x0fff) << 12;
@@ -675,6 +1069,12 @@ void empower_agent::add_user(uint16_t rnti)
 
     /* Clean up measurements*/
     memset(m_ues[rnti]->m_meas, 0, sizeof(em_ue::ue_meas) * EMPOWER_AGENT_MAX_MEAS);
+
+#ifdef HAVE_RAN_SLICER
+    /* Add the user to the default slice */
+    m_ran->add_slice_user(rnti, 9622457614860288L, 0);
+    m_RAN_def_dirty = 1;
+#endif
 
     if(m_uer_feat) {
       m_ues_dirty = 1;
@@ -708,6 +1108,12 @@ void empower_agent::rem_user(uint16_t rnti)
     }
 
     delete it->second;
+
+#ifdef HAVE_RAN_SLICER
+    /* Add the user to the default slice */
+    m_ran->rem_slice_user(rnti, 0);
+    m_RAN_def_dirty = 1;
+#endif
   }
 
   pthread_spin_unlock(&m_lock);
@@ -836,7 +1242,7 @@ void empower_agent::send_UE_report(void)
 void empower_agent::send_UE_meas(em_ue::ue_meas * m)
 {
   int           i;
-  int           j; /* j + 1 will be the amount of measurements to send */
+  int           j;
   char          buf[EMPOWER_AGENT_BUF_SMALL_SIZE];
   int           size;
 
@@ -981,6 +1387,51 @@ void empower_agent::macrep_check()
   }
 }
 
+void empower_agent::ran_check()
+{
+  char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int              blen;
+  uint16_t         i;
+  uint64_t         slices[32];
+  uint16_t         nof_slices;
+  ep_ran_slice_det det;
+  all_args_t *     args = (all_args_t *)m_args;
+
+  pthread_spin_lock(&m_lock);
+  if(!m_RAN_def_dirty) {
+    pthread_spin_unlock(&m_lock);
+    return;
+  }
+  pthread_spin_unlock(&m_lock);
+
+#ifdef HAVE_RAN_SLICER
+
+  det.nof_users = 16;
+
+  m_ran->get_slice_info(
+    9622457614860288L, &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users);
+  
+  blen = epf_single_ran_slice_rep(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    m_RAN_mod,
+    9622457614860288L,
+    &det);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+#endif
+
+  pthread_spin_lock(&m_lock);
+  m_RAN_def_dirty = 0;
+  pthread_spin_unlock(&m_lock);
+
+  return;
+}
+
 /* Extracts the PRBS used from a certain DCI */
 int empower_agent::prbs_from_dci(void * dci, int dl, uint32_t cell_prbs)
 {
@@ -1069,6 +1520,10 @@ void * empower_agent::agent_loop(void * args)
   while(a->m_state != AGENT_STATE_STOPPED) {
     if(a->m_uer_feat) {
       a->dirty_ue_check();
+    }
+
+    if(a->m_RAN_feat) {
+      a->ran_check();
     }
 
     a->measure_check();
