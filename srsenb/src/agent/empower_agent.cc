@@ -101,8 +101,6 @@ empower_agent::em_ue::em_ue()
  * Agent callback system.                                                     *
  ******************************************************************************/
 
-static void slice_feedback(uint32_t mod);
-
 /* NOTE: This can hold only one reference of agent. If you plan to go with more
  * consider using a map enb_id --> agent instance.
  */
@@ -242,335 +240,7 @@ static int ea_ue_report(uint32_t mod, int trig_id)
   return em_agent->setup_UE_report(mod, trig_id);
 }
 
-static int ea_ran_setup_request(uint32_t mod)
-{
-  char         buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int          blen;
-  ep_ran_det   det;
-  all_args_t * args  = enb::get_instance()->get_args();
-
-  printf("ea_ran_setup_request\n"); /* ----------------------------------------- Just for debugging; REMOVE! */
-
 #ifdef HAVE_RAN_SLICER
-  det.l1_mask = 0;
-  det.l2_mask = 0;
-  det.l3_mask = 0;
-  /* This should retrieved in a way like em_agent->ran_get_slice_id() */
-  det.l2.mac.slice_sched = 1;
-
-  blen = epf_single_ran_setup_rep(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod,
-    &det);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-
-#else
-  blen = epf_single_ran_setup_ns(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-#endif
-
-  return 0;
-}
-
-static int ea_slice_request(uint32_t mod, uint64_t slice)
-{
-  char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int              blen;
-  all_args_t *     args  = enb::get_instance()->get_args();
-  
-  uint16_t         i;
-  uint64_t         slices[32];
-  uint16_t         nof_slices;
-
-  ep_ran_slice_det det = {0};
-
-  printf("ea_slice_request %" PRIu64 "\n", slice); /* -------------------------- Just for debugging; REMOVE! */
-
-#ifdef HAVE_RAN_SLICER
-
-  if(slice > 0) {
-    det.nof_users = 16;
-
-    em_agent->get_ran()->get_slice_info(
-      slice, &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users);
-    
-    blen = epf_single_ran_slice_rep(
-      buf, 
-      EMPOWER_AGENT_BUF_SMALL_SIZE,
-      em_agent->get_id(),
-      (uint16_t)args->enb.pci,
-      mod,
-      slice,
-      &det);
-
-    if(blen > 0) {
-      em_send(em_agent->get_id(), buf, blen);
-    }
-
-    return 0;
-  }
-
-  em_agent->setup_RAN_report(mod);
-  
-  slice_feedback(mod);
-/*
-  nof_slices = em_agent->get_ran()->get_slices(32, slices);
-
-  if(nof_slices > 0) {
-    for(i = 0; i < nof_slices; i++) {
-      det.nof_users = 16;
-
-      if(em_agent->get_ran()->get_slice_info(
-        slices[i], &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users)) 
-      {
-          continue;
-      }
-
-      blen = epf_single_ran_slice_rep(
-        buf, 
-        EMPOWER_AGENT_BUF_SMALL_SIZE,
-        em_agent->get_id(),
-        (uint16_t)args->enb.pci,
-        mod,
-        slices[i],
-        &det);
-
-      if(blen > 0) {
-        em_send(em_agent->get_id(), buf, blen);
-      }
-    }
-  }
-  */
-#else
-  blen = epf_single_ran_slice_ns(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-#endif
-  return 0;
-}
-
-int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
-{
-  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int                blen;
-  int                i;
-  uint16_t           usr[32] = { 0 };
-  all_args_t *       args    = enb::get_instance()->get_args();
-  ran_set_slice_args ran_args= { 0 };
-
-  ep_ran_slice_det   sdet;
-
-  printf("ea_slice_add %" PRIu64 "\n", slice); /* ------------------------------ Just for debugging; REMOVE! */
-
-#ifdef HAVE_RAN_SLICER
-  // PLMN is used in the slice ID for this moment
-  if(em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff))) {
-printf(">>> Slice already exists... out\n");
-    return 0;
-  }
-
-  slice_feedback(mod);
-/*
-  ran_args.user_sched = conf->l2.user_sched;
-  ran_args.rbg        = conf->l2.rbg;
-
-  for(i = 0; i < conf->nof_users; i++) {
-    usr[i] = conf->users[i];
-  }
-  
-  ran_args.users     = usr;
-  ran_args.nof_users = conf->nof_users;
-
-  if(em_agent->get_ran()->set_slice(slice, &ran_args)) {
-    return 0;
-  }
-
-  // Get up to 16 users
-  sdet.nof_users = 16;
-
-  em_agent->get_ran()->get_slice_info(
-    slice, &sdet.l2.usched, &sdet.l2.rbgs, sdet.users, &sdet.nof_users);
-
-  blen = epf_single_ran_slice_rep(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod,
-    slice,
-    &sdet);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-*/
-#else // HAVE_RAN_SLICER
-  blen = epf_single_ran_slice_ns(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-#endif // HAVE_RAN_SLICER
-  return 0;
-}
-
-static int ea_slice_rem(uint32_t mod, uint64_t slice) 
-{
-  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int                blen;
-
-  printf("ea_slice_rem %" PRIu64 "\n", slice); /* ------------------------------ Just for debugging; REMOVE! */
-
-#ifdef HAVE_RAN_SLICER
-  em_agent->get_ran()->rem_slice(slice);
-  
-  slice_feedback(mod);
-  /*
-  blen = epf_single_ran_slice_ns(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }  
-  */
-#else // HAVE_RAN_SLICER
-  blen = epf_single_ran_slice_ns(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-#endif // HAVE_RAN_SLICER
-  return 0;
-}
-
-static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
-{
-  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int                blen;
-  int                i;
-  uint16_t           usr[32] = { 2 };
-  all_args_t *       args    = enb::get_instance()->get_args();
-  ran_set_slice_args ran_args;
-
-  uint64_t           slices[32];
-  uint16_t           nof_slices;
-
-  ep_ran_slice_det   sdet;
-
-  printf("slice_conf %" PRIu64 "\n", slice); /* -------------------------------- Just for debugging; REMOVE! */
-
-#ifdef HAVE_RAN_SLICER
-  
-  ran_args.user_sched = conf->l2.user_sched;
-  ran_args.rbg        = conf->l2.rbg;
-
-  for(i = 0; i < conf->nof_users; i++) {
-    //em_agent->get_ran()->add_slice_user(conf->users[i], slice, 1);
-    usr[i] = conf->users[i];
-  }
-  
-  ran_args.users     = usr;
-  ran_args.nof_users = conf->nof_users;
-
-  if(em_agent->get_ran()->set_slice(slice, &ran_args)) {
-    return 0;
-  }
-
-  slice_feedback(mod);
-/*
-  // Get up to 16 users
-  sdet.nof_users = 16;
-
-  nof_slices = em_agent->get_ran()->get_slices(32, slices);
-
-  if(nof_slices > 0) {
-    for(i = 0; i < nof_slices; i++) {
-      sdet.nof_users = 16;
-
-      em_agent->get_ran()->get_slice_info(
-        slices[i], &sdet.l2.usched, &sdet.l2.rbgs, sdet.users, &sdet.nof_users);
-
-      blen = epf_single_ran_slice_rep(
-        buf, 
-        EMPOWER_AGENT_BUF_SMALL_SIZE,
-        em_agent->get_id(),
-        (uint16_t)args->enb.pci,
-        mod,
-        slices[i],
-        &sdet);
-
-      if(blen > 0) {
-        em_send(em_agent->get_id(), buf, blen);
-      }
-    }
-  }
-*/
-  /*
-  em_agent->get_ran()->get_slice_info(
-    slice, &sdet.l2.usched, &sdet.l2.rbgs, sdet.users, &sdet.nof_users);
-
-  blen = epf_single_ran_slice_rep(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod,
-    slice,
-    &sdet);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-  */
-#else // HAVE_RAN_SLICER
-  blen = epf_single_ran_slice_ns(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    mod);
-
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-#endif // HAVE_RAN_SLICER
-  return 0;
-}
 
 // Send situation of all the slices
 static void slice_feedback(uint32_t mod)
@@ -613,6 +283,143 @@ static void slice_feedback(uint32_t mod)
   }
 }
 
+static int ea_ran_setup_request(uint32_t mod)
+{
+  char         buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int          blen;
+  ep_ran_det   det;
+  all_args_t * args  = enb::get_instance()->get_args();
+
+  det.l1_mask = 0;
+  det.l2_mask = 0;
+  det.l3_mask = 0;
+  /* This should retrieved in a way like em_agent->ran_get_slice_id() */
+  det.l2.mac.slice_sched = 1;
+
+  blen = epf_single_ran_setup_rep(
+    buf, 
+    EMPOWER_AGENT_BUF_SMALL_SIZE,
+    em_agent->get_id(),
+    (uint16_t)args->enb.pci,
+    mod,
+    &det);
+
+  if(blen > 0) {
+    em_send(em_agent->get_id(), buf, blen);
+  }
+
+  return 0;
+}
+
+static int ea_slice_request(uint32_t mod, uint64_t slice)
+{
+  char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int              blen;
+  all_args_t *     args  = enb::get_instance()->get_args();
+  
+  uint16_t         i;
+  uint64_t         slices[32];
+  uint16_t         nof_slices;
+
+  ep_ran_slice_det det = {0};
+
+  if(slice > 0) {
+    det.nof_users = 16;
+
+    em_agent->get_ran()->get_slice_info(
+      slice, &det.l2.usched, &det.l2.rbgs, det.users, &det.nof_users);
+    
+    blen = epf_single_ran_slice_rep(
+      buf, 
+      EMPOWER_AGENT_BUF_SMALL_SIZE,
+      em_agent->get_id(),
+      (uint16_t)args->enb.pci,
+      mod,
+      slice,
+      &det);
+
+    if(blen > 0) {
+      em_send(em_agent->get_id(), buf, blen);
+    }
+
+    return 0;
+  }
+
+  em_agent->setup_RAN_report(mod);
+  
+  slice_feedback(mod);
+
+  return 0;
+}
+
+int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
+{
+  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int                blen;
+  int                i;
+  uint16_t           usr[32] = { 0 };
+  all_args_t *       args    = enb::get_instance()->get_args();
+  ran_set_slice_args ran_args= { 0 };
+
+  ep_ran_slice_det   sdet;
+
+  // PLMN is used in the slice ID for this moment
+  if(em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff))) {
+
+    return 0;
+  }
+
+  slice_feedback(mod);
+
+  return 0;
+}
+
+static int ea_slice_rem(uint32_t mod, uint64_t slice) 
+{
+  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int                blen;
+
+  em_agent->get_ran()->rem_slice(slice);
+  slice_feedback(mod);
+
+  return 0;
+}
+
+static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
+{
+  char               buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int                blen;
+  int                i;
+  uint16_t           usr[32] = { 2 };
+  all_args_t *       args    = enb::get_instance()->get_args();
+  ran_set_slice_args ran_args;
+
+  uint64_t           slices[32];
+  uint16_t           nof_slices;
+
+  ep_ran_slice_det   sdet;
+
+  ran_args.user_sched = conf->l2.user_sched;
+  ran_args.rbg        = conf->l2.rbg;
+
+  for(i = 0; i < conf->nof_users; i++) {
+    usr[i] = conf->users[i];
+  }
+  
+  ran_args.users     = usr;
+  ran_args.nof_users = conf->nof_users;
+
+  if(em_agent->get_ran()->set_slice(slice, &ran_args)) {
+    return 0;
+  }
+
+  slice_feedback(mod);
+
+  return 0;
+}
+
+#endif // HAVE_RAN_SLICER
+
 static struct em_agent_ops empower_agent_ops = {
   0,                      /* init */
   0,                      /* release */
@@ -628,11 +435,18 @@ static struct em_agent_ops empower_agent_ops = {
    * RAN Request operations
    */
   {
+#ifdef HAVE_RAN_SLICER
     ea_ran_setup_request,   /* ran.setup_request */
     ea_slice_request,       /* slice_request */
     ea_slice_add,           /* slice_add */
     ea_slice_rem,           /* slice_rem */
     ea_slice_conf           /* slice_conf */
+#else
+    0,
+    0,
+    0,
+    0
+#endif
   }
 };
 

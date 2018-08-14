@@ -453,8 +453,6 @@ int ran_duodynamic_ssched::set_param(
     slice_id = strtoull(slice, 0, 10);
     val_rbg  = (uint16_t)atoi(val);
 
-    printf("Setting %" PRIu64 " to rbg %d\n", slice_id, val_rbg);
-
     /* Case Slice A, allocation from 0 to switch:
      *    The allocation requested is the switch itself. This means that checks
      *    can be done directly using the given value 'val_rbg'.
@@ -730,7 +728,6 @@ int  dl_metric_ran::add_slice(uint64_t id)
 //------------------------------------------------------------------------------ TEMPORARY!
   if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenA != id) {
     ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = id;
-printf("Second slice is %" PRIu64 "\n", ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB);
   }
 
 //------------------------------------------------------------------------------ TEMPORARY!
@@ -835,14 +832,12 @@ void dl_metric_ran::rem_slice_user(uint16_t rnti, uint64_t slice)
     for(si = m_slice_map.begin(); si != m_slice_map.end(); ++si) {
       if(si->second.users.count(rnti) > 0) {
         si->second.users.erase(rnti);
-printf("SCHED: Removing user %d from slice %" PRIu64 "\n", rnti, si->first);
       }
     }
   }
   // Remove from a specific slice
   else {
     m_slice_map[slice].users.erase(rnti);
-printf("SCHED: Removing user %d from slice %" PRIu64 "\n", rnti, slice);
   }
 
   if(m_user_map.count(rnti) > 0) {
