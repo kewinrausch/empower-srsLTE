@@ -5,7 +5,7 @@
  *
  * \section COPYRIGHT
  *
- * Copyright 2013-2017 Software Radio Systems Limited
+ * Copyright 2013-2018 Software Radio Systems Limited
  *
  * \section LICENSE
  *
@@ -27,8 +27,8 @@
  *
  */
 
-#ifndef AGENT_H
-#define AGENT_H
+#ifndef __AGENT_H
+#define __AGENT_H
 
 #include <srslte/common/log.h>
 #include <srslte/common/log_filter.h>
@@ -44,25 +44,33 @@
 
 namespace srsenb {
 
+/* Generic Agent class.
+ *
+ * This class is just a generic back-bone class to give a shape to future 
+ * alternative agents. An agent, in general view, is expected to interact with
+ * the different levels of the base stations. The Agent class, as you can see,
+ * is in fact extending public interfaces present in the library.
+ * 
+ * These interfaces provides how the Agent reacts to layers orders, NOT the 
+ * opposite.
+ */
 class agent :
-  public agent_interface_rrc,
-  public agent_interface_mac,
-  public agent_interface_ran
+  public agent_interface_rrc, /* Agent interface for RRC layer */
+  public agent_interface_mac, /* Agent interface for MAC layer */
+  public agent_interface_ran  /* Agent interface for RAN manager */
 {
 public:
-  /* Initializes the agent with the layers to interact with.
-   * Returns 0 on success, otherwise a negative error code.
-   */
+  /* Initializes the agent and prepare it for being used */
   virtual int init(
-    int enb_id,
-    rrc_interface_agent * rrc,
-    ran_interface_agent * ran,
-    srslte::log * logger) = 0;
+    int                    enb_id,
+    rrc_interface_agent *  rrc,
+    ran_interface_common * ran,
+    srslte::log *          logger) = 0;
 
-  /* Stops the agent processing and terminates it. */
+  /* Stop the agent functionalities and releases its resources */
   virtual void stop() = 0;
 };
 
 }
 
-#endif
+#endif /* __AGENT_H */

@@ -37,13 +37,10 @@
 #include <srslte/common/log_filter.h>
 #include <srslte/interfaces/enb_interfaces.h>
 
-namespace srsenb {
+// Default slice for all the new, unlocked, users
+#define RAN_DEFAULT_SLICE     9622457614860288L // 0x00.222f93.00.000000
 
-// This structure contains information about RAN on layer 2
-//typedef struct __ran_l2_configuration {
-//  uint32_t sched; // MAC scheduler for slice Users actually on place
-//  int      rbg;   // Number of PRBs associated with the L2 layer
-//} ran_l2_conf;
+namespace srsenb {
 
 // Map to identify users in the slice
 typedef std::map<uint16_t, int> slice_user_map;
@@ -53,7 +50,6 @@ class ran_slice {
 public:
   uint64_t       id;    // Slice identifier
   uint32_t       plmn;  // PLMN this slice belongs to
-  //ran_l2_conf    l2;    // Configuration at layer 2
   slice_user_map users; // List of users belonging to this slice
 };
 
@@ -68,7 +64,7 @@ public:
  * caller context; be careful if you are accessing its functionalities from 
  * workers for Physical channels.
  */
-class ran : public ran_interface_agent
+class ran : public ran_interface_common
 {
 public:
   uint32_t l1_caps;
@@ -82,32 +78,26 @@ public:
   void release();
 
   /*
-   * ran_interface_agent
-   * Procedures used by the agent to operate on RAN slicing mechanism
+   * ran_interface_common
+   * Procedures used by multiple layers to operate on RAN slicing mechanism
    */
 
-  // Gets the 
-  int  get_slices(uint16_t nof, uint64_t * slices);
+  // Gets the number of existing slices
+  int      get_slices(uint16_t nof, uint64_t * slices);
   // Gets the information for a single slice 
-  int  get_slice_info(
-    uint64_t   id, 
-    uint32_t * sched, 
-    uint16_t * prbs, 
-    uint16_t * users, 
-    uint32_t * nof_users
-  );
+  int      get_slice_info(uint64_t   id, slice_args * args);
   // Adds a new slice inside the RAN mechanism
-  int  add_slice(uint64_t id, uint32_t plmn);
+  int      add_slice(uint64_t id, uint32_t plmn);
   // Removess an existing slice from the RAN mechanism
-  void rem_slice(uint64_t id);
+  void     rem_slice(uint64_t id);
   // Set a slice properties 
-  int set_slice(uint64_t id, ran_set_slice_args * args);
+  int      set_slice(uint64_t id, slice_args * args);
   // Adds a new user association inside the RAN mechanism
-  int  add_slice_user(uint16_t rnti, uint64_t slice, int lock);
+  int      add_slice_user(uint16_t rnti, uint64_t slice, int lock);
   // Removess an existing user association from the RAN mechanism
-  void rem_slice_user(uint16_t rnti, uint64_t slice);
+  void     rem_slice_user(uint16_t rnti, uint64_t slice);
   // Retrieves list of the user and their association with slices
-  void get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users);
+  void     get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users);
   // Retrieves the current enabled RAN MAC slice scheduler
   uint32_t get_slice_sched();
 

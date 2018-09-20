@@ -5,7 +5,7 @@
  *
  * \section COPYRIGHT
  *
- * Copyright 2013-2017 Software Radio Systems Limited
+ * Copyright 2013-2018 Software Radio Systems Limited
  *
  * \section LICENSE
  *
@@ -27,8 +27,8 @@
  *
  */
 
-#ifndef EMPOWER_AGENT_H
-#define EMPOWER_AGENT_H
+#ifndef __EMPOWER_AGENT_H
+#define __EMPOWER_AGENT_H
 
 #include <map>
 #include <pthread.h>
@@ -48,21 +48,27 @@ namespace srsenb {
 #define EMPOWER_AGENT_MAX_CELL_MEAS     8
 #define EMPOWER_AGENT_MAX_MACREP        8
 
-/* State of the agent thread. */
+// State of the agent
 enum agent_state {
-  /* Agent processing paused. */
+  // Agent is not processing 
   AGENT_STATE_STOPPED = 0,
-  /* Agent processing paused. */
+  // Agent task processing is paused 
   AGENT_STATE_PAUSED,
-  /* Agent processing started. */
+  // Agent is processing data/tasks 
   AGENT_STATE_STARTED,
 };
 
-class empower_agent :
-  public agent
+/* The EmPOWER Agent.
+ *
+ * This Agent has the objective to exchange information with an EmPOWER 
+ * controller, and react to feedback incoming from it. This will be done by
+ * using EmPOWER protocols for the communication with the controller.
+ */
+class empower_agent : public agent
 {
-public:
-  /* MAC report details */
+public: // class empower_agent  
+
+  // MAC report details 
   typedef struct mac_report {
     uint32_t        mod_id;
     int             trigger_id;
@@ -75,28 +81,37 @@ public:
   empower_agent();
   ~empower_agent();
 
-  unsigned int          get_id();
-  ran_interface_agent * get_ran();
+  // Get th ID of the agent
+  unsigned int           get_id();
 
-  int init(
-    int enb_id,
-    rrc_interface_agent *rrc,
-    ran_interface_agent * ran,
-    srslte::log * logger);
+  // Get a reference to the RAN interface
+  ran_interface_common * get_ran();
 
-  /* Release any reserved resource. */
+  /* Initialize the agent and prepare it for handling controller and stack
+   * events.
+   */
+  int  init(
+    int                    enb_id,
+    rrc_interface_agent *  rrc,
+    ran_interface_common * ran,
+    srslte::log *          logger);
+
+  void stop();
+
+  // Release any reserved resource
   void release();
 
-  /* Reset agent data and state machines to an starting value */
-  int reset();
+  // Reset agent data and state machines to their starting values
+  int  reset();
 
-  /* Request an UE report */
-  int setup_UE_report(uint32_t mod_id, int trig_id);
-  /* Request a MAC report */
-  int setup_MAC_report(uint32_t mod_id, uint32_t interval, int trig_id);
+  // Request an UE report to the agent
+  int  setup_UE_report(uint32_t mod_id, int trig_id);
 
-  /* Request an UE measurement */
-  int setup_UE_period_meas(
+  // Request a MAC report to the agent
+  int  setup_MAC_report(uint32_t mod_id, uint32_t interval, int trig_id);
+
+  // Request an UE measurement to the agent
+  int  setup_UE_period_meas(
     uint32_t id,
     int      trigger_id,
     uint16_t rnti,
@@ -106,144 +121,173 @@ public:
     uint16_t max_meas,
     int      interval);
 
-  /* Order the agent to report RAN slicer modification */
+  // Request a RAN report to the agent
   int setup_RAN_report(uint32_t mod);
 
-  /* agent_interface_mac: */
+  /* 
+   *
+   * Interface for the MAC layer:
+   * 
+   */
 
+  // Process Downlink scheduling result incoming from the MAC layer
   void process_DL_results(
     uint32_t tti, sched_interface::dl_sched_res_t * sched_result);
+
+  // Process Uplink scheduling result incoming from the MAC layer
   void process_UL_results(
     uint32_t tti, sched_interface::ul_sched_res_t * sched_result);
 
-  /* agent_interface_rrc: */
+  /* 
+   *
+   * Interface for the RRC layer:
+   * 
+   */
 
+  // Add an user into the agent subsystem
   void add_user(uint16_t rnti);
+
+  // Remove an user from the agent subsystem
   void rem_user(uint16_t rnti);
 
+  // Report an RRC measurement arrived from an UE
   void report_RRC_measure(
     uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);
 
-  /* Thread: */
+private: // class empower_agent
 
-  void stop();
+  /* EmPOWER Agent UE class.
 
-private:
-  /*
-   * EmPOWER UE class
+   * This organizes data and procedures which are relative to a certain UE from
+   * an Empower-agent perspective. since this class is only internally used, all
+   * its elements are public.
    */
-
   class em_ue {
-
   public:
+    // UE measurement container for a single cell
     typedef struct {
-      int      dirty;
-      uint16_t pci;
-      uint8_t  rsrp;
-      uint8_t  rsrq;
-    }ue_cell_meas;
+      int      dirty; // Data is new?
+      uint16_t pci; // Physical Cell ID
+      uint8_t  rsrp; // Signal power
+      uint8_t  rsrq; // signal quality
+    } ue_cell_meas;
 
+    // UE measurement container for a requesting module
     typedef struct {
-      uint32_t     id;     /* Id assigned by agent-controller circuit */
-      uint32_t     mod_id;
-      int          trig_id;
+      uint32_t     id; // ID assigned by agent-controller circuit
+      uint32_t     mod_id; // ID of the requesting module
+      int          trig_id; // ID of the trigger assigned
 
-      uint32_t     meas_id;/* Id for UE-eNB circuit */
-      uint32_t     obj_id;
-      uint32_t     rep_id;
+      uint32_t     meas_id; // Measure Id on the UE-eNB circuit
+      uint32_t     obj_id; // Object Id on the UE-eNB circuit
+      uint32_t     rep_id; // Reprot Id on the UE-eNB circuit
 
-      uint16_t     freq;
-      uint16_t     max_cells;
-      uint16_t     max_meas;
-      int          interval;
+      uint16_t     freq; // Frequency to measure, EARFCN
+      uint16_t     max_cells; // Max cell to report*/
+      uint16_t     max_meas; // Max measure to take
+      int          interval; // Measurement interval
 
-      ue_cell_meas carrier;
-      int          c_dirty;
+      ue_cell_meas carrier; // Report of the carrier signal
+      int          c_dirty; // Carrier signal dirty?
 
+      // Reports of all the other cells
       ue_cell_meas neigh[EMPOWER_AGENT_MAX_CELL_MEAS];
-    }ue_meas;
+    } ue_meas;
 
-    uint64_t m_imsi;
-    uint32_t m_plmn;
+    uint64_t m_imsi; // IMSI of this UE (NOT SUPPORTED yet)*/
+    uint32_t m_plmn; // PLMN of the UE
 
-    uint32_t m_next_meas_id;
-    uint32_t m_next_obj_id;
-    uint32_t m_next_rep_id;
-    ue_meas  m_meas[EMPOWER_AGENT_MAX_MEAS];
+    uint32_t m_next_meas_id; // Next Id for UE ue_meas.meas_id
+    uint32_t m_next_obj_id; // Next Id for UE ue_meas.obj_id
+    uint32_t m_next_rep_id; // Next Id for UE ue_meas.rep_id
+    ue_meas  m_meas[EMPOWER_AGENT_MAX_MEAS]; // Measurements
 
+    // Constructor for the UE class
     em_ue();
-  };
+  }; // class em_ue
 
-  /*
-   * End class em_ue
+  unsigned int           m_id; // ID of the agent/eNB
+
+  rrc_interface_agent  * m_rrc; // Pointer to RRC interface
+  ran_interface_common * m_ran; // Pointer to RAN interface
+
+  srslte::log *          m_logger; // Pointer to Agent logger instance
+
+  void *                 m_args; // eNB arguments
+
+  int                    m_uer_feat; // UE reporting feature enabled?
+  int                    m_uer_tr; // UE reporting feature trigger
+  unsigned int           m_uer_mod; // UE reporting feature module ID
+
+  // UE-report related variables
+
+  int                    m_nof_ues;
+  std::map<uint16_t, em_ue *> m_ues; // Map of User Equipments
+  int                    m_ues_dirty; // Are there modifications to report?
+
+  // MAC-related variables
+  
+  macrep                 m_macrep[EMPOWER_AGENT_MAX_MACREP];
+  uint32_t               m_DL_sf; // Number of subframes for this report
+  uint32_t               m_DL_prbs_used; // Number of resources used
+  uint32_t               m_UL_sf; // Number of subframes for this report
+  uint32_t               m_UL_prbs_used; // Number of resources used
+
+  // RAN-related variables
+
+  uint32_t               m_RAN_feat; // RAN feature enabled?
+  uint32_t               m_RAN_def_dirty; // Modifications at RAN level?
+  uint32_t               m_RAN_mod; // RAN module ID to use
+
+  // Threading-related variables
+
+  pthread_t              m_thread; // Agent reporting and servicing thread
+  pthread_spinlock_t     m_lock; // Lock for the thread
+  int                    m_state; // State of the agent thread
+
+  /* 
+   * 
+   * Generic utilities for the Agent 
+   * 
    */
 
-  unsigned int m_id;
-
-  //srslte::radio *    m_rf;
-  //srsenb::phy *      m_phy;
-  //srsenb::mac *      m_mac;
-  //srsenb::rlc *      m_rlc;
-  //srsenb::pdcp *     m_pdcp;
-  rrc_interface_agent * m_rrc;
-  ran_interface_agent * m_ran;
-
-  srslte::log * m_logger;
-
-  void *        m_args; /* eNB arguments */
-
-  int           m_uer_feat;
-  int           m_uer_tr;
-  unsigned int  m_uer_mod;
-
-  /* UE report variables */
-
-  int           m_nof_ues;
-  std::map<uint16_t, em_ue *> m_ues;
-  int           m_ues_dirty;
-
-  /* MAC report variables: */
-  
-  macrep        m_macrep[EMPOWER_AGENT_MAX_MACREP];
-  uint32_t      m_DL_sf;
-  uint32_t      m_DL_prbs_used;
-  uint32_t      m_UL_sf;
-  uint32_t      m_UL_prbs_used;
-
-  /* RAN report variables: */
-
-  uint32_t      m_RAN_feat;
-  uint32_t      m_RAN_def_dirty;
-  uint32_t      m_RAN_mod;
-
-  /* Thread: */
-
-  pthread_t m_thread;
-  pthread_spinlock_t m_lock;
-  int m_state;
-
-  /* Utilities */
-
+  // Perform a check on UE reporting mechanism
   void dirty_ue_check();
+
+  // Perform a check on UE measurement reporting mechanism
   void measure_check();
+
+  // Perform a check on MAC reporting mechanism
   void macrep_check();
+
+  // Perform a check on RAN reporting mechanism
   void ran_check();
 
+  // Get number of PRBs used from DCI
   int  prbs_from_dci(void * DCI, int dl, uint32_t cell_prbs);
+  
+  // Get number of PRBs used from bitmask
   int  prbs_from_mask(int RA_format, uint32_t mask, uint32_t cell_prbs);
 
-  /* Thread: */
-
+  // Thread main loop
   static void * agent_loop(void * args);
 
-  /* Interaction with controller: */
+  /* 
+   * 
+   * Interaction with controller
+   * 
+   */
 
+  // Send a MAC report to the controller
   void send_MAC_report(uint32_t mod_id, ep_macrep_det * det);
+
+  // Send an UE report to the controller
   void send_UE_report(void);
+
+  // Send an UE measurement report to the controller
   void send_UE_meas(em_ue::ue_meas * m);
+}; // class empower_agent
 
-};
+} // namespace srsenb
 
-} /* namespace srsenb */
-
-#endif /* EMPOWER_AGENT_H */
+#endif // __EMPOWER_AGENT_H 

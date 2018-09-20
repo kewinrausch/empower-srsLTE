@@ -5,7 +5,7 @@
  *
  * \section COPYRIGHT
  *
- * Copyright 2013-2017 Software Radio Systems Limited
+ * Copyright 2013-2018 Software Radio Systems Limited
  *
  * \section LICENSE
  *
@@ -29,8 +29,8 @@
 
 /* This is the no-operation agent. */
 
-#ifndef DUMMY_AGENT_H
-#define DUMMY_AGENT_H
+#ifndef __DUMMY_AGENT_H
+#define __DUMMY_AGENT_H
 
 #include <srslte/common/log_filter.h>
 
@@ -38,35 +38,39 @@
 
 namespace srsenb {
 
-/* "Do-nothing" implementation for the agent subsystem. */
+/* "Dummy agent provides an empty agent. Such agents is passive, and do not 
+ * reacts to any events. Layer asking for service will receive a standard return
+ * value, but nothing will be performed.
+ */
 class dummy_agent : public agent
 {
 public:
+  /* Initialize and prepare the agent to do nothing */
   int init(
-    int enb_id,
-    rrc_interface_agent * rrc,
-    ran_interface_agent * ran,
-    srslte::log * logger);
+    int                    enb_id,
+    rrc_interface_agent *  rrc,
+    ran_interface_common * ran,
+    srslte::log *          logger);
 
+  /* Does not stop anything, since nothing is running */
   void stop();
 
-  /* agent_interface_mac: */
+  /* Interface for the MAC */
 
   void process_DL_results(
     uint32_t tti, sched_interface::dl_sched_res_t * sched_result);
   void process_UL_results(
     uint32_t tti, sched_interface::ul_sched_res_t * sched_result);
 
-  /* agent_interface_rrc: */
+  /* Interface for RRC */
 
   void add_user(uint16_t rnti);
   void rem_user(uint16_t rnti);
 
-  void report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);
-
-private:
+  void report_RRC_measure(
+    uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);
 };
 
 }
 
-#endif /* DUMMY_AGENT_H */
+#endif /* __DUMMY_AGENT_H */

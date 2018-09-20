@@ -58,24 +58,28 @@
 namespace srsenb 
 {
 
+#ifdef HAVE_RAN_SLICER
+
 int ran::init(mac_interface_ran * mac, srslte::log * log) 
 {
-  ran_set_slice_args mac_args = {0};
+  slice_args sargs;
+
+  memset(&sargs, 0, sizeof(sargs));
 
   l1_caps = 0;
   l2_caps = EP_RAN_LAYER2_CAP_PRB_SLICING;
   l3_caps = 0;
 
-  m_log = log;
-  m_mac = mac;
+  m_log   = log;
+  m_mac   = mac;
 
-  // Mac properties for the tenant 
-  mac_args.user_sched = 1;
-  mac_args.rbg        = 7;
+  // Mac properties for the default tenant 
+  sargs.l2.mac.user_sched = 1;
+  sargs.l2.mac.rbg        = 7;
 
   /* Add the default slice */
-  add_slice(9622457614860288L, 0); /* 2463349149404233728L --> 0x00222f9300000000 */
-  set_slice(9622457614860288L, &mac_args);
+  add_slice(RAN_DEFAULT_SLICE, 0); /* 2463349149404233728L --> 0x00222f9300000000 */
+  set_slice(RAN_DEFAULT_SLICE, &sargs);
         
   return 0;
 }
@@ -86,8 +90,8 @@ void ran::release()
 }
 
 /*
- * ran_interface_agent
- * Procedures used by the agent to operate on RAN slicing mechanism
+ * ran_interface_common
+ * Procedures used by the components to operate on RAN slicing mechanism
  */
 
 /* Returns a list of slices currently registered in the system.
@@ -113,43 +117,33 @@ int ran::get_slices(uint16_t nof, uint64_t * slices)
 /* Returns detailed information of a single slice.
  * Returns 0 if operation is successful, otherwise a negative error code.
  */
-int ran::get_slice_info(
-  uint64_t   id, 
-  uint32_t * sched, 
-  uint16_t * prbs, 
-  uint16_t * users, 
-  uint32_t * nof_users)
+int ran::get_slice_info(uint64_t   id, slice_args * info)
 {
   uint32_t                 count = 0;
   slice_user_map::iterator it;
-  mac_set_slice_args       args  = {0};
+  mac_set_slice_args       args;
 
   if(m_slices.count(id) == 0) {
     return -1;
   }
 
-  //*sched = m_slices[id]->l2.sched;
-  //*prbs  = m_slices[id]->l2.rbg;
-  // Retrieve information from the MAC layer
+  /*
+   * Retrieve information from the MAC layer
+   */
   m_mac->get_slice(id, &args);
-
-  // Update RAN abstraction base of data
-  //m_slices[id]->l2.sched = args.user_sched;
-  //m_slices[id]->l2.rbg   = args.rbg;
-
-  *sched = args.user_sched;
-  *prbs  = args.rbg;
+  info->l2.mac.user_sched = args.user_sched;
+  info->l2.mac.rbg        = args.rbg;
 
   for(it = m_slices[id]->users.begin(); it != m_slices[id]->users.end(); ++it) {
-    if(count >= *nof_users) {
+    if(count >= info->nof_users) {
       break;
     }
 
-    users[count] = it->first;
+    info->users[count] = it->first;
     count++;
   }
 
-  *nof_users = count;
+  info->nof_users = count;
 
   return 0;
 }
@@ -235,15 +229,15 @@ printf("Slice %" PRIu64 " removed!\n", id);
   return;
 }
 
-int ran::set_slice(uint64_t id, ran_set_slice_args * args)
+int ran::set_slice(uint64_t id, slice_args * info)
 {
   unsigned int             i;
   slice_user_map::iterator it;
-  mac_set_slice_args       mac_args = { 0 };
+  mac_set_slice_args       mac_args;
 
-  if(id == 0 || !args) {
-    Error("Invalid arguments on set_slice, slice=%" PRIu64 ", args=%p\n", 
-      id, args);
+  if(id == 0 || !info) {
+    Error("Invalid arguments on set_slice, slice=%" PRIu64 ", info=%p\n", 
+      id, info);
 
     return -1;
   }
@@ -253,62 +247,65 @@ int ran::set_slice(uint64_t id, ran_set_slice_args * args)
     return -1;
   }
 
-  if(args->user_sched > 0) {
-  //  m_slices[id]->l2.sched = args->user_sched;
-    mac_args.user_sched    = args->user_sched;
+  if(info->l2.mac.user_sched > 0) {
+    mac_args.user_sched = info->l2.mac.user_sched;
   }
 
-  if(args->rbg > 0) {
-    //m_slices[id]->l2.rbg   = args->rbg;
-    mac_args.rbg           = args->rbg;
+  if(info->l2.mac.rbg > 0) {
+    mac_args.rbg = info->l2.mac.rbg;
   }
 
   // Set options for that slice
   m_mac->set_slice(id, &mac_args);
 
 rep:
-  // Iterate on the current users of the slice
+  // Remove users which are no more part of the slice here
   for(it = m_slices[id]->users.begin(); it != m_slices[id]->users.end(); ++it) {
     // Check the situation arrived
-    for(i = 0; i < args->nof_users; i++) {
-      if(args->users[i] == it->first) {
+    for(i = 0; i < info->nof_users; i++) {
+      if(info->users[i] == it->first) {
         break;
       }
     }
 
-    // The current user is not listed in the arrived one, and should be removed
-    if(i == args->nof_users) {
+    // User not found in the arrived report; remove it
+    if(i == info->nof_users) {
       rem_slice_user(it->first, id);
-      // Iterator is not more valid here, since rem_slice_user operate on the 
-      // same base of data. Please renew it by jumping at the start
+
+      /* IMPORTANT: 
+       * Iterator is not more valid here, since rem_slice_user operate on the 
+       * same base of data. Please renew it by jumping at the start.
+       */
       goto rep;
     }
   }
 
   // Time to add now new users
-  for(i = 0; i < args->nof_users; i++) {
+  for(i = 0; i < info->nof_users; i++) {
     // User not present?
-    if(m_slices[id]->users.count(args->users[i]) == 0) {
-      m_slices[id]->users[args->users[i]] = 1;
+    if(m_slices[id]->users.count(info->users[i]) == 0) {
+      m_slices[id]->users[info->users[i]] = 1;
 
       // Add and lock it, since the controller asked to interact with such user
-      add_slice_user(args->users[i], id, 1);
+      add_slice_user(info->users[i], id, 1);
     }
   }
-
-printf("Slice %" PRIu64 " set to: usched=%d, prbs=%d\n",
-    id, args->user_sched, args->rbg);
 
   return 0;
 }
 
 int  ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
 {
-  if(rnti == 0 || slice == 0) {
+  if(rnti == 0) {
     Error("Invalid arguments on add_user, rnti=%d, slice=%" PRIu64 "\n", 
       rnti, slice);
 
     return -1;
+  }
+
+  // If slice is not specified, use the default one
+  if(slice == 0) {
+    slice = RAN_DEFAULT_SLICE;
   }
 
   if(m_slices.count(slice) == 0) {
@@ -392,5 +389,69 @@ uint32_t ran::get_slice_sched()
 {
   return m_mac->get_slice_sched();
 }
+
+#else  // HAVE_RAN_SLICER
+
+int ran::init(mac_interface_ran * mac, srslte::log * log) 
+{
+  m_log   = log;
+  m_mac   = mac;
+
+  Error("The RAN slicer is disabled!\n");
+
+  return 0;
+}
+
+void ran::release()
+{
+  return;
+}
+
+int ran::get_slices(uint16_t nof, uint64_t * slices)
+{
+  return 0;
+}
+
+int ran::get_slice_info(uint64_t   id, slice_args * info)
+{
+  return -1;
+}
+
+int ran::add_slice(uint64_t id, uint32_t plmn)
+{
+  return -1;
+}
+
+void ran::rem_slice(uint64_t id)
+{
+  return;
+}
+
+int ran::set_slice(uint64_t id, slice_args * info)
+{
+  return -1;
+}
+
+int  ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
+{
+  return -1;
+}
+
+void ran::rem_slice_user(uint16_t rnti, uint64_t slice)
+{
+  return;
+}
+
+void ran::get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users) 
+{
+  return;
+}
+
+uint32_t ran::get_slice_sched()
+{
+  return 0;
+}
+
+#endif // HAVE_RAN_SLICER
 
 }

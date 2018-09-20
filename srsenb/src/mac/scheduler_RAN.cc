@@ -276,6 +276,11 @@ void ran_rr_usched::schedule(
       first = i->first;
     }
 
+    // Skip UE which has nothing to tx/re-tx
+    //if((*umap)[i->first].has_data == 0) {
+    //  continue;
+    //}
+
     // Last RNTI not selected yet?
     if(!m_last) {
       rnti = i->first;
@@ -305,7 +310,7 @@ void ran_rr_usched::schedule(
   }
 
   // In the case we reached the end but no RNTI has been selected yet
-  if (!rnti && i == slice->users.end()) {
+  if (!rnti) {
     rnti = first;
   }
 
@@ -325,7 +330,7 @@ void ran_rr_usched::schedule(
 int ran_rr_usched::get_param(
   char *       name,
   unsigned int nlen,
-  char *             value,
+  char *       value,
   unsigned int vlen) 
 {
   // Currently not allowed to get parameters
@@ -1007,7 +1012,7 @@ void dl_metric_ran::new_tti(
     user = (sched_ue *)&iter->second;
 
     // Save this user RNTI
-    user->ue_idx = (uint32_t)iter->first;
+    //user->rnti = (uint32_t)iter->first;
 
     has_data = user->get_pending_dl_new_data(m_tti);
     has_harq = user->get_pending_dl_harq(m_tti);
@@ -1015,24 +1020,30 @@ void dl_metric_ran::new_tti(
     pthread_spin_lock(&m_lock);
 
     // Add or update an UE entry
-    if (m_user_map.count(iter->first) == 0) {
-      m_user_map[iter->first].self_m        = 1;
-      m_user_map[iter->first].last_seen     = m_tti_abs;
-      m_user_map[iter->first].DL_data       = 0;
-      m_user_map[iter->first].DL_data_delta = 0;
+    if (m_user_map.count(user->rnti) == 0) {
+      m_user_map[user->rnti].self_m        = 1;
+      m_user_map[user->rnti].last_seen     = m_tti_abs;
+      m_user_map[user->rnti].DL_data       = 0;
+      m_user_map[user->rnti].DL_data_delta = 0;
     } else {
-      // Out for 5 frames? Consider it as out
-      if (m_tti_abs - m_user_map[iter->first].last_seen > 5000) {
-        m_user_map[iter->first].self_m        = 1;
-        m_user_map[iter->first].last_seen     = m_tti_abs;
-        m_user_map[iter->first].DL_data       = 0;
-        m_user_map[iter->first].DL_data_delta = 0;
-      }
-      else {
+      // Out for 5 seconds? Consider it as out
+      if (m_tti_abs - m_user_map[user->rnti].last_seen > 5000) {
+        m_user_map[user->rnti].self_m        = 1;
+        m_user_map[user->rnti].last_seen     = m_tti_abs;
+        m_user_map[user->rnti].DL_data       = 0;
+        m_user_map[user->rnti].DL_data_delta = 0;
+      } else {
         // Save the TTI where we saw this user last time
-        m_user_map[iter->first].last_seen = m_tti_abs;
+        m_user_map[user->rnti].last_seen = m_tti_abs;
       }
     }
+
+    // Regardless of what happens, register if it has data or not
+    if(has_data > 0 || has_harq) {
+      m_user_map[user->rnti].has_data = 1;
+    } else {
+      m_user_map[user->rnti].has_data = 0;
+    }    
 
 #ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
     /* Perform cleanup operations to remove RNTIs which are no more handled by 
@@ -1085,10 +1096,10 @@ void dl_metric_ran::new_tti(
       }
     }
     */
-  if(m_user_map.count(iter->first) == 0) {
-    m_user_map[iter->first].self_m = 1;
-    m_slice_map[RAN_SLICE_STARTING].users[iter->first] = 1;
-  }
+  //if(m_user_map.count(user->rnti) == 0) {
+  //  m_user_map[user->rnti].self_m = 1;
+  //  m_slice_map[RAN_SLICE_STARTING].users[user->rnti] = 1;
+  //}
   
   pthread_spin_unlock(&m_lock);
 
@@ -1107,7 +1118,7 @@ void dl_metric_ran::new_tti(
 dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
 {
   int            i;
-  uint16_t       rnti      = (uint16_t)user->ue_idx;
+  uint16_t       rnti      = (uint16_t)user->rnti;
   uint32_t       h_mask    = 0;
   uint32_t       rbg_mask  = 0;
   uint32_t       nof_rbg   = 0;

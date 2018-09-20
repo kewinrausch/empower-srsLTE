@@ -20,10 +20,6 @@
 
 file(GLOB SOURCES "*.cc")
 
-if(NOT ENABLE_RAN_SLICER)
-  list(REMOVE_ITEM SOURCES ran.cc)
-endif(NOT ENABLE_RAN_SLICER)
-
 add_library(srsenb_ran STATIC ${SOURCES})
 
 install(TARGETS srsenb_ran DESTINATION ${LIBRARY_DIR})

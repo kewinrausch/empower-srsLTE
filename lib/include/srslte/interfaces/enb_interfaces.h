@@ -74,6 +74,7 @@ public:
   virtual int crc_info(uint32_t tti, uint16_t rnti, uint32_t nof_bytes, bool crc_res) = 0; 
   
   virtual int get_dl_sched(uint32_t tti, dl_sched_t *dl_sched_res) = 0;
+  virtual int get_mch_sched(bool is_mcch, dl_sched_t *dl_sched_res) = 0;
   virtual int get_ul_sched(uint32_t tti, ul_sched_t *ul_sched_res) = 0;
   
   // Radio-Link status 
@@ -97,6 +98,20 @@ public:
 class phy_interface_rrc
 {
 public:
+    
+   typedef struct {
+    LIBLTE_RRC_MBSFN_SUBFRAME_CONFIG_STRUCT     mbsfn_subfr_cnfg;
+    LIBLTE_RRC_MBSFN_NOTIFICATION_CONFIG_STRUCT mbsfn_notification_cnfg;
+    LIBLTE_RRC_MBSFN_AREA_INFO_STRUCT           mbsfn_area_info;
+    LIBLTE_RRC_MCCH_MSG_STRUCT                  mcch;
+  } phy_cfg_mbsfn_t;
+  
+  typedef struct {
+    phy_cfg_mbsfn_t  mbsfn;
+  } phy_rrc_cfg_t; 
+  
+  
+  virtual void configure_mbsfn(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUCT *sib2, LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_13_STRUCT *sib13, LIBLTE_RRC_MCCH_MSG_STRUCT mcch) = 0;
   virtual void set_conf_dedicated_ack(uint16_t rnti, bool rrc_completed) = 0;
   virtual void set_config_dedicated(uint16_t rnti, LIBLTE_RRC_PHYSICAL_CONFIG_DEDICATED_STRUCT* dedicated) = 0;
   
@@ -118,7 +133,7 @@ public:
   virtual int bearer_ue_rem(uint16_t rnti, uint32_t lc_id) = 0; 
   virtual int set_dl_ant_info(uint16_t rnti, LIBLTE_RRC_ANTENNA_INFO_DEDICATED_STRUCT *dl_ant_info) = 0;
   virtual void phy_config_enabled(uint16_t rnti, bool enabled) = 0;
-
+  virtual void write_mcch(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUCT *sib2, LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_13_STRUCT *sib13, LIBLTE_RRC_MCCH_MSG_STRUCT *mcch) = 0;
 };
 
 class mac_interface_rlc 
@@ -180,12 +195,12 @@ public:
 class rlc_interface_rrc
 {
 public:
-  virtual void reset(uint16_t rnti) = 0;
-  virtual void clear_buffer(uint16_t rnti) = 0; 
+  virtual void clear_buffer(uint16_t rnti) = 0;
   virtual void add_user(uint16_t rnti) = 0; 
   virtual void rem_user(uint16_t rnti) = 0; 
   virtual void add_bearer(uint16_t rnti, uint32_t lcid) = 0;
   virtual void add_bearer(uint16_t rnti, uint32_t lcid, srslte::srslte_rlc_config_t cnfg) = 0;
+  virtual void add_bearer_mrb(uint16_t rnti, uint32_t lcid) = 0;
 };
 
 // PDCP interface for GTPU
@@ -260,6 +275,7 @@ public:
   virtual void add_paging_id(uint32_t ueid, LIBLTE_S1AP_UEPAGINGID_STRUCT UEPagingID) = 0; 
 };
 
+
 // RRC interface for agent
 class rrc_interface_agent
 {
@@ -287,39 +303,15 @@ public:
 class s1ap_interface_rrc
 {
 public:
-  virtual void initial_ue(uint16_t rnti, srslte::byte_buffer_t *pdu) = 0;
-  virtual void initial_ue(uint16_t rnti, srslte::byte_buffer_t *pdu, uint32_t m_tmsi, uint8_t mmec) = 0;
+  virtual void initial_ue(uint16_t rnti, LIBLTE_S1AP_RRC_ESTABLISHMENT_CAUSE_ENUM cause, srslte::byte_buffer_t *pdu) = 0;
+  virtual void initial_ue(uint16_t rnti, LIBLTE_S1AP_RRC_ESTABLISHMENT_CAUSE_ENUM cause, srslte::byte_buffer_t *pdu, uint32_t m_tmsi, uint8_t mmec) = 0;
   virtual void write_pdu(uint16_t rnti, srslte::byte_buffer_t *pdu) = 0;
   virtual bool user_exists(uint16_t rnti) = 0; 
-  virtual void user_inactivity(uint16_t rnti) = 0;
-  virtual void release_eutran(uint16_t rnti) = 0; 
-  virtual bool user_link_lost(uint16_t rnti) = 0; 
+  virtual bool user_release(uint16_t rnti, LIBLTE_S1AP_CAUSERADIONETWORK_ENUM cause_radio) = 0;
   virtual void ue_ctxt_setup_complete(uint16_t rnti, LIBLTE_S1AP_MESSAGE_INITIALCONTEXTSETUPRESPONSE_STRUCT *res) = 0;
   virtual void ue_erab_setup_complete(uint16_t rnti, LIBLTE_S1AP_MESSAGE_E_RABSETUPRESPONSE_STRUCT *res) = 0;
   // virtual void ue_capabilities(uint16_t rnti, LIBLTE_RRC_UE_EUTRA_CAPABILITY_STRUCT *caps) = 0;
 };
-
-typedef struct __ran_set_slice_args {
-  uint32_t   user_sched;
-  uint16_t   rbg;
-  uint16_t * users;
-  uint32_t   nof_users;
-} ran_set_slice_args;
-
-// RAN manager interface for Agent
-class ran_interface_agent
-{
-public:
-  virtual int      get_slices(uint16_t nof, uint64_t * slices) = 0;
-  virtual int      get_slice_info(uint64_t id, uint32_t * sched, uint16_t * prbs, uint16_t * users, uint32_t * nof_users) = 0;
-  virtual int      add_slice(uint64_t id, uint32_t plmn) = 0;
-  virtual void     rem_slice(uint64_t id) = 0;
-  virtual int      set_slice(uint64_t id, ran_set_slice_args * args) = 0;
-  virtual int      add_slice_user(uint16_t rnti, uint64_t slice, int lock) = 0;
-  virtual void     rem_slice_user(uint16_t rnti, uint64_t slice) = 0;
-  virtual void     get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users) = 0;
-  virtual uint32_t get_slice_sched() = 0;
-}; // ran_interface_agent
 
 // Agent interface for MAC
 class agent_interface_mac
@@ -344,6 +336,42 @@ class agent_interface_ran
 {
 public:
 }; // agent_interface_ran
+
+// RAN manager interface for multiple layers
+class ran_interface_common
+{
+public:
+  // Arguments for slice MAC layer
+  typedef struct __slice_mac {
+    uint32_t user_sched;
+    uint32_t rbg;
+  } slice_mac_info;
+
+  // Arguments for slice L2
+  typedef struct __slice_l2 {
+    slice_mac_info mac;
+  } slice_l2_info;
+
+  // Arguments for set slice
+  typedef struct __slice_args {
+    slice_l2_info l2;
+
+    // Users of the slice 
+    uint16_t *    users;
+    // Number of user to consider in the given array
+    uint32_t      nof_users;
+  } slice_args;
+
+  virtual int      get_slices(uint16_t nof, uint64_t * slices) = 0;
+  virtual int      get_slice_info(uint64_t id, slice_args * args) = 0;
+  virtual int      add_slice(uint64_t id, uint32_t plmn) = 0;
+  virtual void     rem_slice(uint64_t id) = 0;
+  virtual int      set_slice(uint64_t id, slice_args * args) = 0;
+  virtual int      add_slice_user(uint16_t rnti, uint64_t slice, int lock) = 0;
+  virtual void     rem_slice_user(uint16_t rnti, uint64_t slice) = 0;
+  virtual void     get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users) = 0;
+  virtual uint32_t get_slice_sched() = 0;
+}; // ran_interface_agent
 
 }
 

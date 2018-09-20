@@ -9,7 +9,7 @@
  *
  * \section COPYRIGHT
  *
- * Copyright 2013-2017 Software Radio Systems Limited
+ * Copyright 2013-2018 Software Radio Systems Limited
  *
  * \section LICENSE
  *
@@ -31,8 +31,8 @@
  *
  */
 
-#ifndef SCHED_METRIC_RAN_H
-#define SCHED_METRIC_RAN_H
+#ifndef __SCHED_METRIC_RAN_H
+#define __SCHED_METRIC_RAN_H
 
 #include <stdint.h>
 #include <list>
@@ -145,6 +145,9 @@ public:
   // How many TTI's ago did we saw this one?
   uint32_t last_seen;
 
+  // Has data that should be tx/re-tx? This can be used by schedulers
+  int      has_data;
+
   // The amount of bytes exchanged in DL at MAC level
   uint64_t DL_data;
   // The amount of bytes exchanged in DL at MAC level during last TTI
@@ -156,7 +159,7 @@ public:
 /* Type which describes the map of users information stored by the RAN
  * subsystem.
  */
-typedef std::map<uint32_t, ran_mac_user> user_map_t;
+typedef std::map<uint16_t, ran_mac_user> user_map_t;
 
 // How a Slice is organized for the RAN scheduler logic
 class ran_mac_slice {
@@ -541,5 +544,4 @@ private:
   
 }
 
-#endif
-
+#endif /* __SCHED_METRIC_RAN_H */
