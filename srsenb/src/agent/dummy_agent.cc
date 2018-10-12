@@ -181,6 +181,32 @@ void dummy_agent::rem_user(uint16_t rnti)
 }
 
 /* Routine:
+ *    empower_agent::update_user_ID
+ * 
+ * Abstract:
+ *    RRC layer report an update in the UE identity through additional checks
+ *    performed during message exchange with the Core Network.
+ *    In dummy implementation this has no effects.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - rnti, ID of the user to update
+ *    - plmn, PLMN ID of the user
+ *    - imsi, Subscriber identity of the user
+ *    - tmsi, Temporary identity of the user
+ * 
+ * Returns:
+ *    ---
+ */
+void dummy_agent::update_user_ID(
+  uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi) 
+{
+  return;
+}
+
+/* Routine:
  *    dummy_agent::report_RRC_measure
  * 
  * Abstract:

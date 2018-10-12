@@ -226,24 +226,51 @@ namespace srsenb {
  *
  */
 
+/* Routine:
+ *    ran_rr_usched::ran_rr_usched
+ * 
+ * Abstract:
+ *    Initializes the RAN slice User-level scheduler with Round-Robin policy
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
 ran_rr_usched::ran_rr_usched()
 {
-  m_id   = 0x80000001;
-  m_last = 0;
+  m_id   = RAN_MAC_USER_RR;
+  m_last = 0; // Last RNTI scheduled
 }
 
+/* Routine:
+ *    ran_rr_usched::~ran_rr_usched
+ * 
+ * Abstract:
+ *    Releases resources associated with this scheduler
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
 ran_rr_usched::~ran_rr_usched()
 {
   // Nothing
 }
 
-/* Scheduler:
- *    Round Robin scheduler for Users
+/* Routine:
+ *    ran_rr_usched::schedule
  *
- * Type:
- *    User level
- *
- * Behavior:
+ * Abstract:
  *    Maintains the RNTI of the last scheduled user, and loop through users 
  *    associated with the slice to select the next one. At each selected user
  *    is given the use of the whole spectrum for that subframe.
@@ -251,10 +278,16 @@ ran_rr_usched::~ran_rr_usched()
  * Assumptions:
  *    It assumes that the slice has at least one PRBG assigned to itself during
  *    the given TTI.
+ * 
+ * Arguments:
+ *    - tti, The TTI where we are operating on
+ *    - slice, Slice to consider
+ *    - umap, map of the currently connected users to consider
+ *    - rbg, array of groups that is possible to allocate
+ *    - ret, array matching rbg with the assigned user
  *
- * Output:
- *    The 'ret' arguments is organized to contains that UEs which are allowed
- *    for transmission during this subframe.
+ * Returns:
+ *    ---
  */
 void ran_rr_usched::schedule(
   const uint32_t     tti,
@@ -327,26 +360,6 @@ void ran_rr_usched::schedule(
   return;
 }
 
-int ran_rr_usched::get_param(
-  char *       name,
-  unsigned int nlen,
-  char *       value,
-  unsigned int vlen) 
-{
-  // Currently not allowed to get parameters
-  return -1;
-}
-
-int ran_rr_usched::set_param(
-  char *       name,
-  unsigned int nlen,
-  char *       value,
-  unsigned int vlen)
-{
-  // Currently not allowed to set parameters
-  return -1;
-}
-
 /******************************************************************************
  *                                                                            *
  *                         Slice schedulers for RAN                           *
@@ -355,14 +368,298 @@ int ran_rr_usched::set_param(
 
 /*
  *
+ * "MULTI-SLICEs" SLICE SCHEDULER
+ *
+ */
+
+/* Routine:
+ *    ran_multi_ssched::ran_multi_ssched()
+ *
+ * Abstract:
+ *    Initializes the resources needed for slice scheduler
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ *
+ * Returns:
+ *    ---
+ */
+ran_multi_ssched::ran_multi_ssched()
+{
+  m_bw = 0;
+}
+
+/* Routine:
+ *    ran_multi_ssched::~ran_multi_ssched()
+ *
+ * Abstract:
+ *    Initializes the resources needed for slice scheduler
+ * 
+ *    WARNING:
+ *    The algorithm choosen thus has the bad property to accumulate lot of PRBs
+ *    at the end of the time frame (due to division with integers, which does
+ *    not count decimals). Needs to be tested!!
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ *
+ * Returns:
+ *    ---
+ */
+ran_multi_ssched::~ran_multi_ssched()
+{
+
+}
+
+/* Routine:
+ *    ran_multi_ssched::get_resources()
+ *
+ * Abstract:
+ *    Gets information about allocations of a specific slice.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, ID of the slice to query
+ *    - tti, pointer to time resources
+ *    - res, pointer to space resources
+ *
+ * Returns:
+ *    ---
+ */
+void ran_multi_ssched::get_resources(uint64_t id, int * tti, int * res)
+{
+  /* Retrieve original time and space requested allocations */
+  if(m_slices.count(id) > 0) {
+    if(tti) {
+      *tti = m_slices[id].tti_org;
+    }
+    if(res) {
+      *res = m_slices[id].res_org;
+    }
+  }
+}
+
+/* Routine:
+ *    ran_multi_ssched::schedule()
+ *
+ * Abstract:
+ *    Schedule the resurces for this TTI downlink. The scheduling is done over
+ *    the sclices which have been assigned some resources in time and space.
+ * 
+ *    Allocation is performed by assigning, at each TTI, a portion of the total
+ *    requested resources. This portion depends on both the total amount of
+ *    resources and the given time.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - tti, pointer to time resources
+ *    - smap, maps of the slices
+ *    - umap, map of the users
+ *    - rbg, boolean array identifying which resource is already in use
+ *    - ret, rnti array which provides per-UE allocation of resources
+ *
+ * Returns:
+ *    'ret' arguments is filled with the correct allocation for this subframe.
+ *    This variable is used then during real harq allocation.
+ */
+void ran_multi_ssched::schedule(
+  const uint32_t tti,
+  slice_map_t *  smap,
+  user_map_t *   umap,
+  bool           rbg[RAN_DL_MAX_RGB],
+  uint16_t       ret[RAN_DL_MAX_RGB])
+{
+  int       i;      // Index
+  
+  uint64_t  sid;    // Slice id
+  int       res;    // Number of resources that shall be granted
+  int       tot;    // Total resources consumed
+
+  // Allocation for the single slice
+  bool      user[RAN_DL_MAX_RGB];
+
+  slice_map_t::iterator sit; // Slices iterator
+
+  // Operate on all the slices
+  for(sit = smap->begin(); sit != smap->end(); ++sit) {
+    sid = sit->first;
+    tot = 0;
+    res = 0;
+
+    // Slice not yet set, so no time/space is dedicated for it
+    if(m_slices.count(sid) == 0) {
+      continue; // Next slice
+    }
+
+    // Time given expired
+    if(m_slices[sid].tti_credit == 0) {
+      // but resources are not!!
+      if(m_slices[sid].res_credit > 0) {
+        /* NOTE: 
+         * Renew the time credit for the moment. This error should trigger
+         * something more extreme as resolving policy.
+         * 
+         * For balancing purposes can we subtracts remaining credit to original
+         * fields?
+         */
+        m_slices[sid].tti_credit = m_slices[sid].tti_org;
+        continue; // Next slice
+      }
+
+      // Negative time is consumed and never renewed
+      if(m_slices[sid].tti_org < 0) {
+        continue; // Next slice
+      }
+
+      // If even resources were expired, renew them
+      m_slices[sid].tti_credit = m_slices[sid].tti_org;
+      m_slices[sid].res_credit = m_slices[sid].res_org;
+//Warning("Renew for slice %" PRIu64 " resources, res=%d, time=%d\n", sid, m_slices[sid].res_credit, m_slices[sid].tti_credit);
+    }
+
+    // Are there resources to be consumed?
+    if(m_slices[sid].res_credit > 0) {
+      // Time credit is more than 0?
+      if(m_slices[sid].tti_credit > 0) {
+        // How many resources we have to expend for this frame
+        res = m_slices[sid].res_credit / m_slices[sid].tti_credit;
+      } 
+      /* Zero case is handled in previous if; if this is triggered it means that
+       * TTI is negative, which I interprets as 'once'.
+       */
+      else {
+        res = m_slices[sid].res_credit / (m_slices[sid].tti_credit * -1);
+//Warning("%d one-time res left for slice %" PRIu64 "\n", res, sid);
+      }
+    } 
+    // No more resources for this slice
+    else {
+      continue; // Next slice
+    }
+
+Warning("%d resources for slice %" PRIu64 "\n", res, sid);
+
+    // Set the groups which can are free for the user scheduler to allocate
+    for(i = 0; i < RAN_DL_MAX_RGB; i++) {
+      // In use?
+      if(rbg[i]) {
+        user[i] = true; // In use
+      }
+      // Not in use?
+      else {
+        if(res > 0) {
+          user[i] = false; // Not in use, free for allocation...
+          rbg[i]  = true;  // ...aaand now this RBG is in use
+          res--;           // Less resources to consume
+          tot++;           // More consumed
+        } else {
+          user[i] = true;  // No more credit, don't use
+        }
+      }
+    }
+
+    // Scheduler users for this slice, filling 'ret'
+    if (sit->second.sched_user) {
+      sit->second.sched_user->schedule(tti, &sit->second, umap, user, ret);
+    }
+
+    // Consume the resource credit; 'res' resources allocated
+    m_slices[sid].res_credit -= tot;
+
+    // Positive time?
+    if(m_slices[sid].tti_credit > 0) {
+      m_slices[sid].tti_credit--;
+    } 
+    // Negative time?
+    else {
+      m_slices[sid].tti_credit++;
+    }
+  }
+
+  return; // Allocations done
+}
+
+/* Routine:
+ *    ran_multi_ssched::set_resources()
+ *
+ * Abstract:
+ *    Set the resources for a particular slice. If resources on both time and
+ *    space are set to -1, the slice is removed from the scheduler database.
+ *
+ * Assumptions:
+ *    Synchronization over resources is performed outside this context. I expect
+ *    the DL scheduler to synchronize against 'schedule' and set/get op.
+ * 
+ * Arguments:
+ *    - id, ID of the slice
+ *    - tti, Transmission Time Interval resources
+ *    - res, physical resources
+ *
+ * Returns:
+ *    Zero on success, otherwise a negative error code
+ */
+int ran_multi_ssched::set_resources(uint64_t id, int tti, int res)
+{
+  if(id == RAN_SLICE_INVALID) {
+    return -1;
+  }
+
+  // Remove element from the scheduler, since no resources are associated to it
+  if(tti == -1 && res == -1) {
+    m_slices.erase(id);
+    return 0;
+  }
+
+  /*
+   * TODO: Resource check for over-commitment is performed here!
+   */
+
+  // This renews the credits, since we have to compute with updates value
+  m_slices[id].tti_org    = tti;
+  m_slices[id].tti_credit = tti;
+  m_slices[id].res_org    = res;
+  m_slices[id].res_credit = res;
+
+//printf("Slice %" PRIu64 " resources set to space=%d, time=%d\n", id, res, tti);
+
+  return 0;
+}
+
+/*
+ *
  * "DUO-DYNAMIC" SLICE-ASSIGNMENT SCHEDULER
  *
  */
 
-// Constructor for the scheduler class
+/* Routine:
+ *    ran_duodynamic_ssched::ran_duodynamic_ssched()
+ *
+ * Abstract:
+ *    Initializes the resources needed for slice scheduler for 2 slice
+ *    instances.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ *
+ * Returns:
+ *    ---
+ */
 ran_duodynamic_ssched::ran_duodynamic_ssched()
 {
-  m_id       = 0x00000002;
+  m_id       = RAN_MAC_SLICE_DUO;
 
   // Slice A area starts (including) from PRBG 0
   // Slice B area starts (including) from PRBG 7
@@ -377,12 +674,7 @@ ran_duodynamic_ssched::ran_duodynamic_ssched()
   // Slice A ID
   m_tenA     = RAN_SLICE_STARTING; // <----------------------------------------- NOTE: Hardcoded for testing purposes
   // Slice B ID
-#ifdef RAN_STATIC  /* <---------------------------------------------------------  No Controller static setup */
-  m_tenB     = 2L;
-#else
   m_tenB     = 0;
-#endif /* <------------------------------------------------------------------------------------------------- */
-  
   // Slot of TTIs used for scheduler monitoring
   m_win_slot = 0;
   // Amount of PRBG used by slice A
@@ -393,117 +685,120 @@ ran_duodynamic_ssched::ran_duodynamic_ssched()
   m_rbg_max  = 13; // <--------------------------------------------------------- NOTE: Hardcoded for testing purposes
 }
 
+/* Routine:
+ *    ran_duodynamic_ssched::~ran_duodynamic_ssched
+ * 
+ * Abstract:
+ *    Releases resources associated with this scheduler
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
 ran_duodynamic_ssched::~ran_duodynamic_ssched() 
 {
   // Nothing
 }
 
-int ran_duodynamic_ssched::get_param(
-  char *         name,
-  unsigned int   nlen,
-  char *         value,
-  unsigned int   vlen)
+/* Routine:
+ *    ran_duodynamic_ssched::get_resources
+ * 
+ * Abstract:
+ *    Get the resources allocations associated with a certain slice
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, slice ID to consider
+ *    - tti, pointer to the variable populated with time resource
+ *    - res, pointer to the variable populated with space resource 
+ * 
+ * Returns:
+ *    ---
+ */
+void ran_duodynamic_ssched::get_resources(uint64_t id, int * tti, int * res)
 {
-  uint32_t rbg;
-
-  uint64_t slice_id;
-  char *   slice;
-
-  // Handles RBG assignment 
-  if(strcmp(name, "rbg") == 0) {
-    slice = strtok(value, ",");
-    
-    if(!slice) {
-      return -1;
+  if(res) {
+    if(id == m_tenA) {
+      *res = (int)m_switch;
+    } else if(id == m_tenB) {
+      *res = (int)(m_rbg_max - m_switch);
     }
-
-    slice_id = strtoull(slice, 0, 10);
-
-    if(slice_id == m_tenA) {
-      return (int)m_switch;
-    } else if(slice_id == m_tenB) {
-      return (int)(m_rbg_max - m_switch);
-    }
-
-    // Other tenants have no resources
-    return 0;
   }
-
-  return -1;
 }
 
-int ran_duodynamic_ssched::set_param(
-  char *       name,
-  unsigned int nlen,
-  char *       value,
-  unsigned int vlen)
+/* Routine:
+ *    ran_duodynamic_ssched::set_resources
+ * 
+ * Abstract:
+ *    Set the resources allocations associated with a certain slice
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, slice ID to consider
+ *    - tti, time resource to associate with the slice
+ *    - res, space resource to associate with the slice
+ * 
+ * Returns:
+ *    Zero on success, otherwise a negative error code
+ */
+int ran_duodynamic_ssched::set_resources(uint64_t id, int tti, int res)
 {
-  uint32_t rbg;
+  uint32_t rbg = (uint32_t)res;
 
-  uint64_t slice_id;
-  char *   slice;
+  if(res < 0 || tti < 0) {
+    return -1;
+  }
 
-  char *   val;
-  uint16_t val_rbg;
-
-  // Handles RBG assignment 
-  if(strcmp(name, "rbg") == 0) {
-    slice = strtok(value, ",");
-    val = strtok(NULL, ",");
-    
-    if(!slice || !val) {
-      return -1;
+  /* Case Slice A, allocation from 0 to switch:
+   *    The allocation requested is the switch itself. This means that checks
+   *    can be done directly using the given value 'res'.
+   * 
+   *    e.g: If A want 10 RBG, switch should be moved to 10.
+   */
+  if(m_tenA == id) {
+    if(rbg > m_rbg_max - m_limit) {
+      m_switch = m_rbg_max - m_limit;
+    } else if(rbg < m_limit) {
+      m_switch = m_limit;
+    } else {
+      m_switch = rbg;
     }
-
-    slice_id = strtoull(slice, 0, 10);
-    val_rbg  = (uint16_t)atoi(val);
-
-    /* Case Slice A, allocation from 0 to switch:
-     *    The allocation requested is the switch itself. This means that checks
-     *    can be done directly using the given value 'val_rbg'.
-     * 
-     *    e.g: If A want 10 RBG, switch should be moved to 10.
-     */
-    if(m_tenA == slice_id) {
-      if(val_rbg > m_rbg_max - m_limit) {
-        m_switch = m_rbg_max - m_limit;
-      } else if(val_rbg < m_limit) {
-        m_switch = m_limit;
-      } else {
-        m_switch = val_rbg;
-      }
-    } 
-    /* Case Slice B, allocation from switch to the max:
-     *    Allocation here happens from switch to max. This means that the target
-     *    switch value is 'max - val_rbg'
-     * 
-     *    e.g: If B want 10 RBG, switch should be moved to 3. 
-     *         This means 3 = 13(max) - 10(requested)
-     */
-    else if(m_tenB == slice_id) {
-      rbg = m_rbg_max - val_rbg;
-      
-      if(rbg > m_rbg_max - m_limit) {
-        m_switch = m_rbg_max - m_limit;
-      } else if(rbg < m_limit) {
-        m_switch = m_limit;
-      } else {
-        m_switch = rbg;
-      }
+  } 
+  /* Case Slice B, allocation from switch to the max:
+    *    Allocation here happens from switch to max. This means that the target
+    *    switch value is 'max - res'
+    * 
+    *    e.g: If B want 10 RBG, switch should be moved to 3. 
+    *         This means 3 = 13(max) - 10(requested)
+    */
+  else if(m_tenB == id) {
+    rbg = m_rbg_max - res;
+    
+    if(rbg > m_rbg_max - m_limit) {
+      m_switch = m_rbg_max - m_limit;
+    } else if(rbg < m_limit) {
+      m_switch = m_limit;
+    } else {
+      m_switch = rbg;
     }
   }
 
-  // Parameters setting is not supported right now
-  return -1;
+  return 0;
 }
 
-/* Scheduler:
- *    Duo Dynamic scheduler for Tenants
+/* Routine:
+ *    ran_duodynamic_ssched::schedule
  *
- * Type:
- *    Slice level
- *
- * Behavior:
+ * Abstract:
  *    The scheduler keeps a 'barrier' switch between the two Tenants, which 
  *    identifies where the resources of the first terminates and start the ones
  *    of the second.
@@ -513,9 +808,15 @@ int ran_duodynamic_ssched::set_param(
  *    been ran. This means that miss-behaving user schedulers can still mess
  *    with the spectrum if poorly implemented.
  *
+ * Arguments:
+ *    - tti, current TTI where when allocation happens
+ *    - smap, map of the slices registered
+ *    - umap, map of the users registered
+ *    - rbg, array of the possible RBG slots that are in use or free
+ *    - ret, final outcome of slots assigned to single RNTIs
+ * 
  * Output:
- *    The 'ret' arguments is organized to contains that UEs which are allowed
- *    for transmission during this subframe.
+ *    ---
  */
 void ran_duodynamic_ssched::schedule(
   const uint32_t tti,
@@ -531,8 +832,6 @@ void ran_duodynamic_ssched::schedule(
   //uint32_t     tti_idx  = tti % m_win;
   bool                  trbg_A[RAN_DL_MAX_RGB];
   bool                  trbg_B[RAN_DL_MAX_RGB];
-
-  ran_mac_slice *       sched_t = 0;
 
   slice_map_t::iterator s; // Slice iterator
   user_map_t::iterator  u; // User map iterator
@@ -672,6 +971,21 @@ cont:
  *                                                                            *
  ******************************************************************************/
 
+/* Routine:
+ *    dl_metric_ran::dl_metric_ran()
+ *
+ * Abstract:
+ *    Initializes the static resources needed for the DL metrics.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ *
+ * Returns:
+ *    ---
+ */
 dl_metric_ran::dl_metric_ran()
 {
   int i;
@@ -694,6 +1008,22 @@ dl_metric_ran::dl_metric_ran()
   }
 }
 
+/* Routine:
+ *    dl_metric_ran::init()
+ *
+ * Abstract:
+ *    Creates the resources necessary for logging and synchronizing all the 
+ *    elements of the Downlink scheduler.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - log_handle, Handle to the logging system bound to the metric
+ *
+ * Returns:
+ *    ---
+ */
 void dl_metric_ran::init(srslte::log * log_handle)
 {
   m_log        = log_handle;
@@ -703,19 +1033,26 @@ void dl_metric_ran::init(srslte::log * log_handle)
 
   pthread_spin_init(&m_lock, 0);
 
-  m_slice_sched = new ran_duodynamic_ssched();
-
-  /* Adds the special slice 1.
-   * All UE belongs to slice 1 at the start, and this allows them to complete
-   * connection procedures.
-   */
-  //m_slice_map[RAN_SLICE_STARTING].sched_user = new ran_rr_usched();
-
-#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
-  m_slice_map[2L].sched_user = new ran_rr_usched();
-#endif /* <------------------------------------------------------------------------------------------------- */
+  //m_slice_sched = new ran_duodynamic_ssched();
+  m_slice_sched = new ran_multi_ssched();
+  ((ran_multi_ssched *)(m_slice_sched))->m_log = log_handle; // <-------------------------------------------------------
 }
 
+/* Routine:
+ *    dl_metric_ran::add_slice()
+ *
+ * Abstract:
+ *    Adds a new slice in a compatible way into the MAC slicing subsystem
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, ID of the slice to add
+ *
+ * Returns:
+ *    Zero on success, otherwise a negative error number
+ */
 int  dl_metric_ran::add_slice(uint64_t id)
 {
   pthread_spin_lock(&m_lock);
@@ -731,10 +1068,9 @@ int  dl_metric_ran::add_slice(uint64_t id)
   m_slice_map[id].sched_user = new ran_rr_usched();
 
 //------------------------------------------------------------------------------ TEMPORARY!
-  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenA != id) {
-    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = id;
-  }
-
+//  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenA != id) {
+//    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = id;
+//  }
 //------------------------------------------------------------------------------ TEMPORARY!
 
   pthread_spin_unlock(&m_lock);
@@ -744,6 +1080,21 @@ int  dl_metric_ran::add_slice(uint64_t id)
   return 0;
 }
 
+/* Routine:
+ *    dl_metric_ran::rem_slice()
+ *
+ * Abstract:
+ *    Removes a slice from the MAC slicing subsystem
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, ID of the slice to remove
+ *
+ * Returns:
+ *    ---
+ */
 void dl_metric_ran::rem_slice(uint64_t id)
 {
   ran_user_scheduler *  us;
@@ -766,9 +1117,9 @@ void dl_metric_ran::rem_slice(uint64_t id)
   }
 
 //------------------------------------------------------------------------------ TEMPORARY!
-  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenB == id) {
-    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = 0L;
-  }
+//  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenB == id) {
+//    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = 0L;
+//  }
 //------------------------------------------------------------------------------ TEMPORARY!
 
   us = it->second.sched_user;
@@ -784,23 +1135,47 @@ void dl_metric_ran::rem_slice(uint64_t id)
   return;
 }
 
+/* Routine:
+ *    dl_metric_ran::set_slice()
+ *
+ * Abstract:
+ *    Configures a slice to behave according to a new configuration provided
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, ID of the slice to configure
+ *    - args, arguments with new configuration to apply
+ *
+ * Returns:
+ *    Zero on success, otherwise a negative error code
+ */
 int dl_metric_ran::set_slice(uint64_t id, mac_set_slice_args * args)
 {
-  char value[64] = { 0 };
-
-  /* 
-   *
-   * IMPORTANT: This is specific to Dynamic Duo!
-   * 
-   */
-
-  sprintf(value, "%" PRIu64 ",%d", id, args->rbg);
-
   // Feed the argument to the scheduler 
-  return m_slice_sched->set_param(
-    (char *)"rbg", 4, value, strnlen(value, 64));
+  return m_slice_sched->set_resources(id, (int)args->time, (int)args->rbg);
 }
 
+/* Routine:
+ *    dl_metric_ran::add_slice_user()
+ *
+ * Abstract:
+ *    Associate an user with a slice. The user can be associated with a locked
+ *    or unlocked state; unlocked state allows the scheduler to apply some
+ *    custom optimization on it.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - rnti, ID of the user to associate
+ *    - slice, ID of the slice
+ *    - lock, rnti strictly follows given slice configuration?
+ *
+ * Returns:
+ *    Zero on success, otherwise a negative error code
+ */
 int  dl_metric_ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
 {
   std::list<uint16_t>::iterator it;
@@ -815,8 +1190,21 @@ int  dl_metric_ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
   }
 
   // The user has been associated by the agent, so do not handle by yourself
-  m_user_map[rnti].self_m = !lock;
+  m_user_map[rnti].self_m        = !lock;
   m_slice_map[slice].users[rnti] = 1;
+
+  /* If the element is inserted in the 'default' tenant, also some new resources
+   * should be given to the slice, since they are usually consumed for initial
+   * connection with EPC.
+   */
+  if(slice == RAN_DEFAULT_SLICE) {
+    // Give 6 PRBg per TTI for the next 1 (non renewable) seconds
+    m_slice_sched->set_resources(slice, -1000, 6000);
+  }
+  // User is being associated to a slice, so remove it form the default one
+  else {
+    m_slice_map[RAN_DEFAULT_SLICE].users.erase(rnti);
+  }
 
   Info("User %d associated to slice %" PRIu64 "\n", rnti, slice);
 
@@ -825,6 +1213,22 @@ int  dl_metric_ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
   return 0;
 }
 
+/* Routine:
+ *    dl_metric_ran::rem_slice_user()
+ *
+ * Abstract:
+ *    Removes an association of an user with a slice.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - rnti, ID of the user to remove from the slice
+ *    - slice, ID of the slice
+ *
+ * Returns:
+ *    Zero on success, otherwise a negative error code
+ */
 void dl_metric_ran::rem_slice_user(uint16_t rnti, uint64_t slice)
 {
   //std::map<uint16_t>::iterator it;
@@ -858,51 +1262,46 @@ void dl_metric_ran::rem_slice_user(uint16_t rnti, uint64_t slice)
 
   return;
 }
-#if 0
-void dl_metric_ran::get_user_info(
-  uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users)
-{
-  slice_map_t::iterator         ti;
-  std::list<uint16_t>::iterator ui;
 
-  pthread_rwlock_rdlock(&m_lock);
-
-  // Collect info for every active slice in the system 
-  for (ti = m_slice_map.begin(); ti != m_slice_map.end(); ++ti) {
-    for (ui = ti->second.users.begin(); ui != ti->second.users.end(); ++ui) {
-      // We are looking for every information in our data
-      if(rnti == 0) {
-        users[*ui].push_back(ti->first);
-      } else {
-        // We are looking for a specific RNTI
-        if(rnti == *ui) {
-          users[*ui].push_back(ti->first);
-        }
-      }
-    }
-  }
-  
-  pthread_rwlock_unlock(&m_lock);
-
-  return;
-}
-#endif
+/* Routine:
+ *    dl_metric_ran::get_slice_sched_id()
+ *
+ * Abstract:
+ *    Returns the ID of the slicer scheduler currently running in the system
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ *
+ * Returns:
+ *    ID of the scheduler
+ */
 uint32_t dl_metric_ran::get_slice_sched_id()
 {
   return m_slice_sched->m_id;
 }
 
+/* Routine:
+ *    dl_metric_ran::get_slice_info()
+ *
+ * Abstract:
+ *    Query a slice for its current configuration
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - id, ID of the slice to query
+ *    - args, information filled with the slice configuration
+ *
+ * Returns:
+ *    Zero on success, otherwise a negative error code
+ */
 int dl_metric_ran::get_slice_info(uint64_t id,  mac_set_slice_args * args)
 {
-  char value[64] = { 0 };
-
-  /* 
-   *
-   * IMPORTANT: This is specific to Dynamic Duo!
-   * 
-   */
-
-  sprintf(value, "%" PRIu64 ",", id);
+  int res = 0;
 
   if(m_slice_map.count(id) == 0) {
     Error("Slice %" PRIu64 " not found in the MAC scheduler\n", id);
@@ -910,8 +1309,8 @@ int dl_metric_ran::get_slice_info(uint64_t id,  mac_set_slice_args * args)
   }
 
   args->user_sched = m_slice_map[id].sched_user->m_id;
-  args->rbg        = (uint16_t)m_slice_sched->get_param(
-    (char *)"rbg", 4, value, strnlen(value, 64));
+  m_slice_sched->get_resources(id, 0, &res);
+  args->rbg = res;
 
   // Do not handle users; will be set by upper layers
   args->nof_users  = 0;
@@ -919,11 +1318,27 @@ int dl_metric_ran::get_slice_info(uint64_t id,  mac_set_slice_args * args)
   return 0;
 }
 
-#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
-uint16_t ue_a = 0;
-uint16_t ue_b = 0;
-#endif /* <------------------------------------------------------------------------------------------------- */
-
+/* Routine:
+ *    dl_metric_ran::new_tti()
+ *
+ * Abstract:
+ *    Organize this new Downlink TTI. During this stage information will be
+ *    collected, users will ahve their properties changed due to specific
+ *    policies and the slicing mechanism associate RBGs with users.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - ue_db, UE database of the MAC layer
+ *    - start_rgb, RBG from which is possible to allocate resources
+ *    - nof_rbg, number of RBGs which is possible to allocate from the start
+ *    - nof_ctrl_sym, number of control symbols per subframe
+ *    - tti, TTI number
+ *
+ * Returns:
+ *    ---
+ */
 void dl_metric_ran::new_tti(
   std::map<uint16_t, sched_ue> &ue_db,
   uint32_t                      start_rbg,
@@ -949,9 +1364,7 @@ void dl_metric_ran::new_tti(
   m_tti           = tti;
   m_ctrl_sym      = nof_ctrl_sym;
   
-  /* Guess the cell used BW; this is likely to be called just 2 or 3 times in
-   * the entire life of the scheduler, because BW will not change on runtime.
-   */
+  // Guess the BW of the cell from the given resources
   if(m_max_rbg < nof_rbg) {
     if(nof_rbg <= 6) {
       m_max_rbg  = 6;
@@ -974,12 +1387,9 @@ void dl_metric_ran::new_tti(
     }
   }
 
-  /* Prepare not the status of this TTI PRGB allocation.
-   *
-   * The basic operation is removing those PRB Groups that are before the given
-   * start.
-   *
-   * Additional operations which can exclude groups can happen here.
+  /* Prepare and array boolean elements which describes the situation of the
+   * RBGs in this transmission interval. Groups allocated from the system are
+   * excluded from the ones which is possible to allocate.
    */
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     if (i < start_rbg) {
@@ -993,27 +1403,18 @@ void dl_metric_ran::new_tti(
     }
   }
 
-  
-
-#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
-  // Nothing, do not remove users...
-#else
-  // Reset the users of the starting slice
-  //m_slice_map[RAN_SLICE_STARTING].users.clear();
-#endif /* <------------------------------------------------------------------------------------------------- */
-
   // Reset the situation of the current sub-frame
   for (i = 0; i < RAN_DL_MAX_RGB; i++) {
     m_tti_users[i] = 0;
   }
 
-  // Save for each user its own RNTI
+  /* Apply changes with per-user basis. Depending on various policies the state
+   * of users can change with time. This is done here.
+   */
   for (iter = ue_db.begin(); iter != ue_db.end(); ++iter) {
     user = (sched_ue *)&iter->second;
 
-    // Save this user RNTI
-    //user->rnti = (uint32_t)iter->first;
-
+    // User has new or re-tx data?
     has_data = user->get_pending_dl_new_data(m_tti);
     has_harq = user->get_pending_dl_harq(m_tti);
 
@@ -1045,67 +1446,10 @@ void dl_metric_ran::new_tti(
       m_user_map[user->rnti].has_data = 0;
     }    
 
-#ifdef RAN_STATIC /* <----------------------------------------------------------  No Controller static setup */
-    /* Perform cleanup operations to remove RNTIs which are no more handled by 
-     * the MAC layer
-     */
-    for (ti = m_slice_map.begin(); ti != m_slice_map.end(); ++ti) {
-      for (ui = ti->second.users.begin(); ui != ti->second.users.end(); ++ui) {
-        if (ue_db.count(*ui) == 0) {
-          if (*ui == ue_a) {
-            ue_a = 0;
-          }
-          if (*ui == ue_b) {
-            ue_b = 0;
-          }
-          Warning("UE %x removed from tenant %" PRIu64 "\n", *ui, ti->first);
-          ui = ti->second.users.erase(ui);
-        }
-      }
-    }  
-
-    /* Assign the UE_a if not already stored in UE_b*/
-    if (!ue_a && iter->first != ue_b) {
-      ue_a = iter->first;
-      m_slice_map[RAN_SLICE_STARTING].users.push_back(ue_a);
-      Warning("UE %x assigned to tenant %" PRIu64 "\n", ue_a, RAN_SLICE_STARTING);
-    } else {
-      if (!ue_b && iter->first != ue_a) {
-        ue_b = iter->first;
-        m_slice_map[2L].users.push_back(ue_b);
-        Warning("UE %x assigned to tenant %" PRIu64 "\n", ue_b, 2L);
-      }
-    }
-#else
-    /*
-    // Everyone which is not managed belongs to the default slice 
-    if(m_user_map[iter->first].self_m) {
-      for(
-        ui = m_slice_map[RAN_SLICE_STARTING].users.begin();
-        ui = m_slice_map[RAN_SLICE_STARTING].users.end();
-        ++ui) 
-        {
-          if(ui == iter->first) {
-            break;
-          }
-        }
-
-      // Add only whoever is not already present thus
-      if(ui == m_slice_map[RAN_SLICE_STARTING].users.end()){
-        m_slice_map[RAN_SLICE_STARTING].users.push_back(iter->first);
-      }
-    }
-    */
-  //if(m_user_map.count(user->rnti) == 0) {
-  //  m_user_map[user->rnti].self_m = 1;
-  //  m_slice_map[RAN_SLICE_STARTING].users[user->rnti] = 1;
-  //}
-  
   pthread_spin_unlock(&m_lock);
-
-#endif /* <------------------------------------------------------------------------------------------------- */
   }
 
+  // Has a slice scheduler associated? 
   if (m_slice_sched) {
     // Finally run the schedulers
     m_slice_sched->schedule(
@@ -1115,6 +1459,25 @@ void dl_metric_ran::new_tti(
   rtrace_new_tti(&this->m_rtd);
 }
 
+/* Routine:
+ *    dl_metric_ran::get_user_allocation()
+ *
+ * Abstract:
+ *    After the TTI has been organized, now the system asks if a particular user
+ *    has some possible allocation in the given TTI. This procedure look for
+ *    the previously organized allocation.
+ *
+ * Assumptions:
+ *    'm_tti_users' variable filled with useful information which are on a 
+ *    per-rnti basis.
+ * 
+ * Arguments:
+ *    - user, MAC information of the user *    
+ *
+ * Returns:
+ *    A valid DL HARQ pointer on success, otherwise a null pointer to inform
+ *    that no valid allocation for this user are possible.
+ */
 dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
 {
   int            i;
@@ -1271,10 +1634,21 @@ dl_harq_proc * dl_metric_ran::get_user_allocation(sched_ue * user)
   return NULL; 
 }
 
-/* Build up the PRBG bits-mask starting from a boolean array.
+/* Routine:
+ *    dl_metric_ran::calc_rbg_mask()
  *
- * Every element set as 'true' will mark a bit in the same position into the
- * mask.
+ * Abstract:
+ *    Build up a bits-mask starting from the given boolean array. Every element
+ *    set as true will be marked as 1 in the mask.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - mask, array of boolean values   
+ *
+ * Returns:
+ *    The bitmask
  */
 uint32_t dl_metric_ran::calc_rbg_mask(bool mask[RAN_DL_MAX_RGB])
 {
@@ -1290,16 +1664,42 @@ uint32_t dl_metric_ran::calc_rbg_mask(bool mask[RAN_DL_MAX_RGB])
   return rbg_bitmask;
 }
 
-/* Does the mask fit in the mask of the used PRBG?
+/* Routine:
+ *    dl_metric_ran::allocation_is_valid()
  *
- * Returns 1 only is the mask matches.
+ * Abstract:
+ *    Check if the given allocation is valid for a given bitmask.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - base, allocation to check
+ *    - mask, bitmask of resources
+ *
+ * Returns:
+ *    True or false depending if the allocation is valid or not
  */
 bool dl_metric_ran::allocation_is_valid(uint32_t base, uint32_t mask)
 {
-        return (mask == base);
+  return (mask == base);
 }
 
-// Count how many PRBG are in use in a bits-mask.
+/* Routine:
+ *    dl_metric_ran::count_rbg()
+ *
+ * Abstract:
+ *    Starting from a bitmask, count how many RBG are used.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - mask, mask to consider for the count
+ *
+ * Returns:
+ *    Number of groups allocated in the mask
+ */
 uint32_t dl_metric_ran::count_rbg(uint32_t mask)
 {
   uint32_t count = 0; 
@@ -1320,30 +1720,50 @@ uint32_t dl_metric_ran::count_rbg(uint32_t mask)
  *
  * Returns the number of RBGs that is possible to allocate.
  */
+
+/* Routine:
+ *    dl_metric_ran::new_allocation()
+ *
+ * Abstract:
+ *    Starting from the number of RBG which the system desire to allocate, and
+ *    boolean array of groups where is possible to allocate, generate a new 
+ *    allocation bitmask.
+ *
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - nof_rbg, number of RBG which is requested to allocate
+ *    - rbg_mask, mask where is currently possible to allocate elements
+ *    - final_mask, pointer to the recomputed bitmask
+ *
+ * Returns:
+ *    Number of RBGs that is possible to allocate.
+ */
 int dl_metric_ran::new_allocation(
     uint32_t nof_rbg, bool rbg_mask[RAN_DL_MAX_RGB], uint32_t * final_mask)
 {
-    uint32_t i;
-    int      t;
+  uint32_t i;
+  int      t;
 
-    // Operate on the existing mask of PRBG.
-    for (i = 0, t = 0; i < RAN_DL_MAX_RGB; i++) {
-        // If can be used, then mark a possible PRBG as consumed
-        if (rbg_mask[i]) {
-          // We need the RBG?
-          if(nof_rbg > 0) {
-            t++;
-            nof_rbg--;
-          }
+  // Operate on the existing mask of PRBG.
+  for (i = 0, t = 0; i < RAN_DL_MAX_RGB; i++) {
+      // If can be used, then mark a possible PRBG as consumed
+      if (rbg_mask[i]) {
+        // We need the RBG?
+        if(nof_rbg > 0) {
+          t++;
+          nof_rbg--;
         }
-    }
+      }
+  }
 
-    if (final_mask) {
-        *final_mask = calc_rbg_mask(rbg_mask);
-    }
+  if (final_mask) {
+      *final_mask = calc_rbg_mask(rbg_mask);
+  }
 
-    // How many PRBG have been selected?
-    return t;
+  // How many PRBG have been selected?
+  return t;
 }
 
 } // namespace srsenb 

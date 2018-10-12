@@ -150,6 +150,10 @@ public: // class empower_agent
   // Remove an user from the agent subsystem
   void rem_user(uint16_t rnti);
 
+  // Update identity information for a certain UE
+  void update_user_ID(
+    uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi);
+
   // Report an RRC measurement arrived from an UE
   void report_RRC_measure(
     uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);
@@ -167,25 +171,25 @@ private: // class empower_agent
     // UE measurement container for a single cell
     typedef struct {
       int      dirty; // Data is new?
-      uint16_t pci; // Physical Cell ID
-      uint8_t  rsrp; // Signal power
-      uint8_t  rsrq; // signal quality
+      uint16_t pci;   // Physical Cell ID
+      uint8_t  rsrp;  // Signal power
+      uint8_t  rsrq;  // signal quality
     } ue_cell_meas;
 
     // UE measurement container for a requesting module
     typedef struct {
-      uint32_t     id; // ID assigned by agent-controller circuit
-      uint32_t     mod_id; // ID of the requesting module
+      uint32_t     id;      // ID assigned by agent-controller circuit
+      uint32_t     mod_id;  // ID of the requesting module
       int          trig_id; // ID of the trigger assigned
 
       uint32_t     meas_id; // Measure Id on the UE-eNB circuit
-      uint32_t     obj_id; // Object Id on the UE-eNB circuit
-      uint32_t     rep_id; // Reprot Id on the UE-eNB circuit
+      uint32_t     obj_id;  // Object Id on the UE-eNB circuit
+      uint32_t     rep_id;  // Reprot Id on the UE-eNB circuit
 
-      uint16_t     freq; // Frequency to measure, EARFCN
+      uint16_t     freq;    // Frequency to measure, EARFCN
       uint16_t     max_cells; // Max cell to report*/
-      uint16_t     max_meas; // Max measure to take
-      int          interval; // Measurement interval
+      uint16_t     max_meas;// Max measure to take
+      int          interval;// Measurement interval
 
       ue_cell_meas carrier; // Report of the carrier signal
       int          c_dirty; // Carrier signal dirty?
@@ -194,12 +198,17 @@ private: // class empower_agent
       ue_cell_meas neigh[EMPOWER_AGENT_MAX_CELL_MEAS];
     } ue_meas;
 
-    uint64_t m_imsi; // IMSI of this UE (NOT SUPPORTED yet)*/
-    uint32_t m_plmn; // PLMN of the UE
+    uint8_t m_state; // State of the UE
+    int     m_state_dirty; // State has to be updated?
+
+    uint64_t m_imsi; // International Mobile Subscriber Identity
+    uint32_t m_plmn; // Public Land Mobile Network
+    uint32_t m_tmsi; // Temporary Mobile Subscriber Identity
+    int      m_id_dirty; // Identity has to be updated?
 
     uint32_t m_next_meas_id; // Next Id for UE ue_meas.meas_id
-    uint32_t m_next_obj_id; // Next Id for UE ue_meas.obj_id
-    uint32_t m_next_rep_id; // Next Id for UE ue_meas.rep_id
+    uint32_t m_next_obj_id;  // Next Id for UE ue_meas.obj_id
+    uint32_t m_next_rep_id;  // Next Id for UE ue_meas.rep_id
     ue_meas  m_meas[EMPOWER_AGENT_MAX_MEAS]; // Measurements
 
     // Constructor for the UE class

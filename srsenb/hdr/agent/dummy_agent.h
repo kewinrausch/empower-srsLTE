@@ -66,7 +66,8 @@ public:
 
   void add_user(uint16_t rnti);
   void rem_user(uint16_t rnti);
-
+  void update_user_ID(
+    uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi) ;
   void report_RRC_measure(
     uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);
 };

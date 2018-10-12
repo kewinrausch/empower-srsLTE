@@ -37,8 +37,39 @@
 #include <srslte/common/log_filter.h>
 #include <srslte/interfaces/enb_interfaces.h>
 
-// Default slice for all the new, unlocked, users
-#define RAN_DEFAULT_SLICE     9622457614860288L // 0x00.222f93.00.000000
+//#define RAN_DEFAULT_SLICE     9622457614860288L // 0x00.222f93.00.000000
+
+/* IMPORTANT NOTES ON DEFULT SLICE:
+ * The Default slice is that resource slice which allows UE to complete their
+ * connection with the Network. Without such mechanism, no Downlink resources
+ * will ever be assigned to any UE, and no connection will ever take place.
+ * 
+ * The default slice belongs to no tenant, but all UE will initially be part of
+ * it.
+ * 
+ * Slice ID formatting is as follows:   |----| PLMN  |T| -----|
+ * (T stands for Tag)                   |    |       | |      |
+ *                                      |    |       | |      | */
+#define RAN_DEFAULT_SLICE       0x1L  // 0x00.000000.00.000001
+
+/*
+ *
+ * LAYER 2 RAN SLICING CONSTANTS
+ * 
+ * Defines some important IDs that are later used down in various level of RAN
+ * subsystem.
+ * 
+ */
+
+// RAN slicing MAC level slices scheduler has this common base
+#define RAN_MAC_SLICE_SCHED     0x00000000
+// RAN slicing MAC slice-level scheduler for 2 slice instances
+#define RAN_MAC_SLICE_DUO       0x00000002
+
+// RAN slicing MAC level user scheduler has this common base
+#define RAN_MAC_USER_SCHED      0x80000000
+// RAN slicing MAC User-level Round Robin scheduler
+#define RAN_MAC_USER_RR         0x80000001
 
 namespace srsenb {
 
@@ -77,6 +108,12 @@ public:
   // Releases any allocated resource in a graceful way
   void release();
 
+  // Translate a slice ID into a PLMN id
+  static int id_to_plmn(uint64_t id, int * mcc, int * mnc);
+
+  // Translate MNC and MCC to slice id
+  static uint64_t plmn_to_id(int mcc, int mnc);
+
   /*
    * ran_interface_common
    * Procedures used by multiple layers to operate on RAN slicing mechanism
@@ -96,8 +133,6 @@ public:
   int      add_slice_user(uint16_t rnti, uint64_t slice, int lock);
   // Removess an existing user association from the RAN mechanism
   void     rem_slice_user(uint16_t rnti, uint64_t slice);
-  // Retrieves list of the user and their association with slices
-  void     get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users);
   // Retrieves the current enabled RAN MAC slice scheduler
   uint32_t get_slice_sched();
 

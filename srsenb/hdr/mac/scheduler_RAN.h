@@ -36,8 +36,10 @@
 
 #include <stdint.h>
 #include <list>
+#include <map>
 #include <pthread.h>
 
+#include "srsenb/hdr/ran/ran.h"
 #include "srsenb/hdr/mac/scheduler.h"
 
 // Decorators for arguments
@@ -61,7 +63,7 @@
 #define RAN_DL_MAX_RGB          25
 
 #define RAN_SLICE_INVALID       0
-#define RAN_SLICE_STARTING      9622457614860288L
+#define RAN_SLICE_STARTING      RAN_DEFAULT_SLICE
 #define RAN_USER_INVALID        0
 
 // Define/undefine this symbol to trace the RAN
@@ -197,42 +199,6 @@ public:
     // Do nothing
   }
 
-  /* Gets a parameter value from the scheduler.
-   *
-   * NOTE: Value must be a pointer to an already allocated area of memory.
-   *    Passing an invalid pointer can result in unknown behavior and will 
-   *    likely terminate with the eNB crashing.
-   *
-   * Returns the length of the value string, or a negative value on error.
-   */
-  virtual int get_param(
-    // Name of the parameter that need to be queried
-    __ran_in_  char *       name,
-    // Size of the name parameter
-    __ran_in_  unsigned int nlen,
-    // Buffer where the value will be written
-    __ran_out_ char *             value,
-    // Maximum buffer size of the value arguments
-    __ran_in_  unsigned int vlen) = 0;
-  
-  /* Sets a parameter value of the scheduler.
-   *
-   * NOTE: Value must be a pointer to an already allocated area of memory.
-   *    Passing an invalid pointer can result in unknown behavior and will 
-   *    likely terminate with the eNB crashing.
-   *
-   * Returns 0 on success, or a negative value on error.
-   */
-  virtual int set_param(
-    // Name of the parameter that need to be queried
-    __ran_in_  char *       name,
-    // Size of the name parameter
-    __ran_in_  unsigned int nlen,
-    // Buffer where the value will be written
-    __ran_out_ char *       value,
-    // Maximum buffer size of the value arguments
-    __ran_in_  unsigned int vlen) = 0;
-
   /* ID for the scheduler.
    *
    * Please notes that User-level scheduler for slices start with the most 
@@ -270,17 +236,17 @@ public:
   // Schedule Users following the implemented strategy
   virtual void schedule(
     // The current Transmission Time Interval
-    __ran_in_  const uint32_t     tti,
+    const uint32_t     tti,
     // Slice which is scheduling its users
-    __ran_in_  ran_mac_slice *    slice,
+    ran_mac_slice *    slice,
     // Map with active RAN users
-    __ran_in_  user_map_t *       umap,
+    user_map_t *       umap,
     /* Boolens (1, 0) array of the resources available:
      * 1 means in use, 0 meas still available.
      */
-    __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
+    bool               rbg[RAN_DL_MAX_RGB],
     // Array of the assignment of resources to User Equipments
-    __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]) = 0;
+    uint16_t           ret[RAN_DL_MAX_RGB]) = 0;
 };
 
 /* Provides the commong shape for a Slice scheduler at RAN level.
@@ -306,20 +272,38 @@ public:
     // Do nothing
   }
 
+  // Query the resources associated with a slice
+  virtual void get_resources(
+    // Id of the slice to operate on 
+    uint64_t id,
+    // Time resources in TTI
+    int *    tti,
+    // Physical resources like PRBG or PRBs, depending on the scheduler type
+    int *    res) = 0;
+
   // Schedule Tenants following the implemented strategy
   virtual void schedule(
     // The current Transmission Time Interval
-    __ran_in_  const uint32_t       tti,
+    const uint32_t tti,
     // Map with active RAN tenants
-    __ran_in_        slice_map_t *  smap,
+    slice_map_t *  smap,
     // Map with active RAN users
-    __ran_in_        user_map_t *   umap,
+    user_map_t *   umap,
     /* Boolens (1, 0) array of the resources available:
      * 1 means in use, 0 meas still available.
      */
-    __ran_in_  bool                 rbg[RAN_DL_MAX_RGB],
+    bool           rbg[RAN_DL_MAX_RGB],
     // Array of the assignment of resources to User Equipments
-    __ran_out_ uint16_t             ret[RAN_DL_MAX_RGB]) = 0;
+    uint16_t       ret[RAN_DL_MAX_RGB]) = 0;
+
+  // Assign the resources associated with a slice
+  virtual int set_resources(
+    // Id of the slice to operate on 
+    uint64_t id,
+    // Time resources in TTI
+    int      tti,
+    // Physical resources like PRBG or PRBs, depending on the scheduler type
+    int      res) = 0;
 };
 
 /******************************************************************************
@@ -328,33 +312,66 @@ public:
  *                                                                            *
  ******************************************************************************/
 
+#define RAN_MULTI_DEF_TTI   0
+#define RAN_MULTI_DEF_RES   0
+
+// Slice scheduler for multiple slices; see source for more info
+class ran_multi_ssched : public ran_slice_scheduler {
+public:
+  // Per-slice information and state
+  typedef struct {
+    int tti_credit; // Available TTI credit left
+    int tti_org;    // Original TTI credit requested
+    int tti_last;   // Last time the slice has been processed
+    int res_credit; // Available resources credit left
+    int res_org;    // Original resources credit requested
+  } rms_slice_data;
+
+  ran_multi_ssched();
+  ~ran_multi_ssched();
+
+  // Query the resources associated with a slice
+  void get_resources(uint64_t id, int * tti, int * res);
+
+  // Schedule the RAN Slices
+  void schedule(
+    const uint32_t tti,
+    slice_map_t *  smap,
+    user_map_t *   umap,
+    bool           rbg[RAN_DL_MAX_RGB],
+    uint16_t       ret[RAN_DL_MAX_RGB]);
+
+  // Assign the resources associated with a slice
+  int set_resources(uint64_t id, int tti, int res);
+
+  // Pointer to a loc mechanism to use for feedback
+  srslte::log *                      m_log;
+
+  // Bandwidth of the cell in the DL
+  int                                m_bw;
+  // Slice informations relative to the scheduler
+  std::map<uint64_t, rms_slice_data> m_slices;
+};
+
 // Dynamic Slice resources assignment scheduler; see source for more info
 class ran_duodynamic_ssched : public ran_slice_scheduler {
 public:
   ran_duodynamic_ssched();
   ~ran_duodynamic_ssched();
 
+  // Query the resources associated with a slice
+  void get_resources(uint64_t id, int * tti, int * res);
+
   // Schedule the RAN Slices following a given static map
   void schedule(
-    __ran_in_  const uint32_t     tti,
-    __ran_in_  slice_map_t *      smap,
-    __ran_in_  user_map_t *       umap,
-    __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
-    __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]);
+    const uint32_t tti,
+    slice_map_t *  smap,
+    user_map_t *   umap,
+    bool           rbg[RAN_DL_MAX_RGB],
+    uint16_t       ret[RAN_DL_MAX_RGB]);
 
-  // Get a parameter from this scheduler
-  int get_param(
-    __ran_in_  char *       name,
-    __ran_in_  unsigned int nlen,
-    __ran_out_ char *             value,
-    __ran_in_  unsigned int vlen);
-
-  // Set a parameter of this scheduler
-  int set_param(
-    __ran_in_  char *       name,
-    __ran_in_  unsigned int nlen,
-    __ran_out_ char *       value,
-    __ran_in_  unsigned int vlen);
+  // Assign the resources associated with a slice
+  int set_resources(uint64_t id, int tti, int res);
 
   uint32_t m_rbg_max;
 
@@ -411,30 +428,22 @@ public:
 
   // Schedule the Slice users in a RR fashion
   void schedule(
-    __ran_in_  const uint32_t     tti,
-    __ran_in_  ran_mac_slice *    slice,
-    __ran_in_  user_map_t *       umap,
-    __ran_in_  bool               rbg[RAN_DL_MAX_RGB],
-    __ran_out_ uint16_t           ret[RAN_DL_MAX_RGB]);
-
-  // Get a parameter from this scheduler
-  int get_param(
-    __ran_in_  char *       name,
-    __ran_in_  unsigned int nlen,
-    __ran_out_ char *             value,
-    __ran_in_  unsigned int vlen);
-
-  // Set a parameter of this scheduler
-  int set_param(
-    __ran_in_  char *       name,
-    __ran_in_  unsigned int nlen,
-    __ran_out_ char *       value,
-    __ran_in_  unsigned int vlen);
+    const uint32_t  tti,
+    ran_mac_slice * slice,
+    user_map_t *    umap,
+    bool            rbg[RAN_DL_MAX_RGB],
+    uint16_t        ret[RAN_DL_MAX_RGB]);
 
 private:
   // Last scheduled RNTI/User
   uint16_t m_last;
 };
+
+/******************************************************************************
+ *                                                                            *
+ * RAN metric interface:                                                      *
+ *                                                                            *
+ ******************************************************************************/
 
 /* DL RAN scheduler for MAC.
  */

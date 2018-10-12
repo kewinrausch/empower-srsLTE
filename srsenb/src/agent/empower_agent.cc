@@ -444,6 +444,11 @@ static void slice_feedback(uint32_t mod)
 
   if(nof_slices > 0) {
     for(i = 0; i < nof_slices; i++) {
+      /* Do not report the default slice */
+      if(slices[i] == RAN_DEFAULT_SLICE) {
+        continue;
+      }
+
       det.nof_users = EP_RAN_USERS_MAX;
 
       if(em_agent->get_ran()->get_slice_info(slices[i], &slice_inf)) {
@@ -546,8 +551,18 @@ static int ea_slice_request(uint32_t mod, uint64_t slice)
   ep_ran_slice_det det;
   ran_interface_common::slice_args slice_inf;
 
-#if 0
-  if(slice > 0) {
+  em_agent->setup_RAN_report(mod);
+
+  // Request all the slices setup
+  if(slice == 0) {
+    // Straight send the slices statuses, regardless of the ID requested
+    slice_feedback(mod);
+
+    return 0;
+  }
+
+  // Request a particular slice which is not the default one
+  if(slice != RAN_DEFAULT_SLICE) {
     det.nof_users = 16;
     
     // User memory allocated for det, this way we directly save them there
@@ -573,14 +588,7 @@ static int ea_slice_request(uint32_t mod, uint64_t slice)
     if(blen > 0) {
       em_send(em_agent->get_id(), buf, blen);
     }
-
-    return 0;
   }
-#endif
-  em_agent->setup_RAN_report(mod);
-
-  // Straight send the slices statuses, regardless of the ID requested
-  slice_feedback(mod);
 
   return 0;
 }
@@ -613,8 +621,24 @@ int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
 
   ep_ran_slice_det   sdet;
 
+  ran_interface_common::slice_args slice_inf;
+
+  slice_inf.l2.mac.user_sched = conf->l2.user_sched;
+  slice_inf.l2.mac.rbg        = conf->l2.rbg;
+  slice_inf.l2.mac.time       = 1; // 1 subframe decisions
+  slice_inf.nof_users         = 0;
+
+  for(i = 0; i < conf->nof_users && i < 32; i++) {
+    usr[i] = conf->users[i];
+    slice_inf.nof_users++;
+  }
+  
+  slice_inf.users     = usr;
+  //slice_inf.nof_users = conf->nof_users;
+
   // PLMN is used in the slice ID for this moment
   if(em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff))) {
+//printf("Cannot add slice %" PRIu64 "\n", slice); // <-------------------------------------------------------------------
     /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      * TODO:
      * Due the inability of the controller to handle errors, error reporting
@@ -624,7 +648,20 @@ int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
      */
     return 0;
   }
-
+//printf("Added slice %" PRIu64 "\n", slice); // <------------------------------------------------------------------------
+  // Set the slice with it's starting configuration
+  if(em_agent->get_ran()->set_slice(slice, &slice_inf)) {
+//printf("Cannot set slice %" PRIu64 "\n", slice); // <-------------------------------------------------------------------
+    /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     * TODO:
+     * Due the inability of the controller to handle errors, error reporting
+     * here is suppressed. This NEEDS to be changed, but we need controller
+     * support first!
+     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+     */
+    return 0;
+  }
+//printf("Set slice %" PRIu64 "\n", slice); // <--------------------------------------------------------------------------
   slice_feedback(mod);
 
   return 0;
@@ -686,20 +723,22 @@ static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
 
   ran_interface_common::slice_args slice_inf;
 
-  uint64_t           slices[32];
-  uint16_t           nof_slices;
-
-  slice_inf.l2.mac.user_sched = conf->l2.user_sched;
-  slice_inf.l2.mac.rbg        = conf->l2.rbg;
+  slice_inf.l2.mac.user_sched = (uint32_t)conf->l2.user_sched;
+  slice_inf.l2.mac.rbg        = (uint16_t)conf->l2.rbg;
+  slice_inf.l2.mac.time       = 1;  // 1 subframe decisions
 
   for(i = 0; i < conf->nof_users; i++) {
     usr[i] = conf->users[i];
   }
   
   slice_inf.users     = usr;
-  slice_inf.nof_users = conf->nof_users;
+  slice_inf.nof_users = (uint32_t)conf->nof_users;
+
+  // This is getting ridiculous... set for doing everything...
+  em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff));
 
   if(em_agent->get_ran()->set_slice(slice, &slice_inf)) {
+//printf("Slice %" PRIu64 " does not exists!\n", slice); // <-------------------------------------------------------------
     /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      * TODO:
      * Due the inability of the controller to handle errors, error reporting
@@ -709,7 +748,7 @@ static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
      */
     return 0;
   }
-
+//printf("Set slice %" PRIu64 "\n", slice); // <--------------------------------------------------------------------------
   slice_feedback(mod);
 
   return 0;
@@ -961,6 +1000,9 @@ int empower_agent::reset()
 {
   int      i;
   uint16_t rnti;
+  em_ue *  ue;
+
+  std::map<uint16_t, em_ue *>::iterator it;
 
   Debug("Resetting the state of the Agent\n");
   
@@ -977,28 +1019,32 @@ int empower_agent::reset()
   }
 
   // Reset any UE RRC state
-  for(rnti = 0; rnti < 0xffff; rnti++) {
-    if(m_ues.count(rnti) > 0) {
-      // Invalidate the measure
-      for(i = 0; i < EMPOWER_AGENT_MAX_MEAS; i++) {
-        m_ues[rnti]->m_meas[i].id      = 0;
-        m_ues[rnti]->m_meas[i].mod_id  = 0;
-        m_ues[rnti]->m_meas[i].trig_id = 0;
+  //for(rnti = 0; rnti < 0xffff; rnti++) {
+  for(it = m_ues.begin(); it != m_ues.end(); ++it) {
+    ue = it->second;
 
-        /* TODO:
-         * What about the measurements that are ongoing in the cell phone? They
-         * are not resetted now, so they will keep going. We can still intercept
-         * them probably in the 'report_RRC_measure' call.
-         * 
-         * We should probably send an empty RRC reconfiguration to reset 
-         * everything, but need to check the specs about that.
-         */
-      }
+    ue->m_id_dirty          = 1;
+    ue->m_state_dirty       = 1;
 
-      m_ues[rnti]->m_next_meas_id = 1;
-      m_ues[rnti]->m_next_obj_id  = 1;
-      m_ues[rnti]->m_next_rep_id  = 1;
+    // Invalidate the measure
+    for(i = 0; i < EMPOWER_AGENT_MAX_MEAS; i++) {
+      ue->m_meas[i].id      = 0;
+      ue->m_meas[i].mod_id  = 0;
+      ue->m_meas[i].trig_id = 0;
+
+      /* TODO:
+        * What about the measurements that are ongoing in the cell phone? They
+        * are not resetted now, so they will keep going. We can still intercept
+        * them probably in the 'report_RRC_measure' call.
+        * 
+        * We should probably send an empty RRC reconfiguration to reset 
+        * everything, but need to check the specs about that.
+        */
     }
+
+    ue->m_next_meas_id = 1;
+    ue->m_next_obj_id  = 1;
+    ue->m_next_rep_id  = 1;
   }
   pthread_spin_unlock(&m_lock);
 
@@ -1026,6 +1072,7 @@ int empower_agent::setup_UE_report(uint32_t mod_id, int trig_id)
   m_uer_mod  = mod_id;
   m_uer_tr   = trig_id;
   m_uer_feat = 1;
+  m_ues_dirty= 1;
 
   Debug("UE report ready; reporting to module %d\n", mod_id);
 
@@ -1497,6 +1544,12 @@ void empower_agent::add_user(uint16_t rnti)
 
     m_ues[rnti]->m_plmn  = (args->enb.s1ap.mcc & 0x0fff) << 12;
     m_ues[rnti]->m_plmn |= (args->enb.s1ap.mnc & 0x0fff);
+    m_ues[rnti]->m_imsi  = 0;
+    m_ues[rnti]->m_tmsi  = 0;
+    m_ues[rnti]->m_id_dirty = 1; // Mark as to send
+
+    m_ues[rnti]->m_state = UE_STATUS_RADIO_CONNECTED;
+    m_ues[rnti]->m_state_dirty  = 1; // Mark as to send
 
     m_ues[rnti]->m_next_meas_id = 1;
     m_ues[rnti]->m_next_obj_id  = 1;
@@ -1551,16 +1604,68 @@ void empower_agent::rem_user(uint16_t rnti)
   if(it != m_ues.end()) {
     Debug("Removing user %x\n", rnti);
 
-    ue = it->second;
+    //ue = it->second;
+    //m_nof_ues--;
+    //m_ues.erase(it);
+    m_ues[rnti]->m_state       = UE_STATUS_RADIO_DISCONNECTED;
+    m_ues[rnti]->m_state_dirty = 1; // Mark as to update
 
-    m_nof_ues--;
-    m_ues.erase(it);
-    
     if(m_uer_feat) {
       m_ues_dirty = 1;
     }
 
-    delete it->second;
+    //delete it->second;
+
+#ifdef HAVE_RAN_SLICER
+    m_RAN_def_dirty = 1;
+#endif
+  }
+
+  pthread_spin_unlock(&m_lock);
+}
+
+/* Routine:
+ *    empower_agent::update_user_ID
+ * 
+ * Abstract:
+ *    RRC layer report an update in the UE identity through additional checks
+ *    performed during message exchange with the Core Network.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - rnti, ID of the user to update
+ *    - plmn, PLMN ID of the user
+ *    - imsi, Subscriber identity of the user
+ *    - tmsi, Temporary identity of the user
+ * 
+ * Returns:
+ *    ---
+ */
+void empower_agent::update_user_ID(
+    uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi) 
+{
+  em_ue * ue;
+  std::map<uint16_t, em_ue *>::iterator it;
+
+  pthread_spin_lock(&m_lock);
+
+  it = m_ues.find(rnti);
+
+  if(it != m_ues.end()) {
+    Debug("Updating user %x identity\n", rnti);
+
+    m_ues[rnti]->m_plmn = plmn;
+    m_ues[rnti]->m_imsi = imsi;
+    m_ues[rnti]->m_tmsi = tmsi;
+    m_ues[rnti]->m_id_dirty = 1; // Mark as to update
+
+    if(m_uer_feat) {
+      m_ues_dirty = 1;
+    }
+
+    //delete it->second;
 
 #ifdef HAVE_RAN_SLICER
     m_RAN_def_dirty = 1;
@@ -1705,22 +1810,55 @@ void empower_agent::send_MAC_report(uint32_t mod_id, ep_macrep_det * det)
 void empower_agent::send_UE_report(void)
 {
   std::map<uint16_t, em_ue *>::iterator it;
-
-  int           i;
+  
+  em_ue *       ue;
+  int           i       = 0;
   char          buf[EMPOWER_AGENT_BUF_SMALL_SIZE];
   int           size;
   ep_ue_details ued[16];
 
   all_args_t * args = (all_args_t *)m_args;
 
+  memset(ued, 0, sizeof(ep_ue_details));
+
   pthread_spin_lock(&m_lock);
 
-  for(i = 0, it = m_ues.begin(); it != m_ues.end(); ++it, i++)
-  {
-    ued[i].pci  = (uint16_t)args->enb.pci;
-    ued[i].rnti = it->first;
-    ued[i].plmn = it->second->m_plmn;
-    ued[i].imsi = it->second->m_imsi;
+  it = m_ues.begin();
+  it++;
+
+  while(it != m_ues.end() && i < 16) {
+    ue = it->second;
+
+    // State first; if the UE disconnects the identity is not interesting
+    if(ue->m_state_dirty) {
+      ued[i].rnti = it->first;
+      ued[i].state= ue->m_state;
+
+      ue->m_state_dirty = 0;
+
+      // We are reporting the UE going offline
+      if(ue->m_state == UE_STATUS_RADIO_DISCONNECTED) {
+        m_ues.erase(it++);
+        m_nof_ues--;
+
+        delete ue;// Remove allocated UE descriptor
+
+        i++;      // Next reporting slot
+        continue; // Next UE to report
+      }
+    }
+
+    if(ue->m_id_dirty) {
+      ued[i].rnti = it->first;
+      ued[i].plmn = ue->m_plmn;
+      ued[i].imsi = ue->m_imsi;
+      ued[i].tmsi = ue->m_tmsi;
+
+      ue->m_id_dirty = 0;
+    }
+
+    i++;  // Next reporting slot
+    ++it; // Next element
   }
 
   pthread_spin_unlock(&m_lock);
@@ -1969,12 +2107,14 @@ void empower_agent::macrep_check()
  */
 void empower_agent::ran_check()
 {
+  ran_interface_common::slice_args slice_inf;
+
   char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
   int              blen;
-
-  ran_interface_common::slice_args slice_inf;
   ep_ran_slice_det det;
   all_args_t *     args = (all_args_t *)m_args;
+
+  memset(&det, 0, sizeof(ep_ran_slice_det));
 
   pthread_spin_lock(&m_lock);
   if(!m_RAN_def_dirty) {
@@ -1983,8 +2123,8 @@ void empower_agent::ran_check()
   }
   pthread_spin_unlock(&m_lock);
 
-#ifdef HAVE_RAN_SLICER
-
+//#ifdef HAVE_RAN_SLICER
+#if 0
   det.nof_users       = 16;
   slice_inf.users     = det.users;
   slice_inf.nof_users = det.nof_users;
@@ -2003,6 +2143,7 @@ void empower_agent::ran_check()
   if(blen > 0) {
     em_send(em_agent->get_id(), buf, blen);
   }
+
 #endif
 
   pthread_spin_lock(&m_lock);
@@ -2163,7 +2304,7 @@ void * empower_agent::agent_loop(void * args)
     a->measure_check();
     a->macrep_check();
 
-    usleep(1000000); // Sleep for 100 ms
+    usleep(100000); // Sleep for 100 ms
   }
 
   em_terminate_agent(a->m_id);

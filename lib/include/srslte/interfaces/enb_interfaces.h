@@ -145,6 +145,7 @@ public:
 typedef struct __mac_set_slice_args {
   uint32_t   user_sched;
   uint16_t   rbg;
+  uint32_t   time;
   uint16_t * users;
   uint32_t   nof_users;
 } mac_set_slice_args;
@@ -327,7 +328,7 @@ class agent_interface_rrc
 public:
   virtual void add_user(uint16_t rnti) = 0;
   virtual void rem_user(uint16_t rnti) = 0;
-
+  virtual void update_user_ID(uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi) = 0;
   virtual void report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report) = 0;
 }; // agent_interface_rrc
 
@@ -345,6 +346,7 @@ public:
   typedef struct __slice_mac {
     uint32_t user_sched;
     uint32_t rbg;
+    uint32_t time;
   } slice_mac_info;
 
   // Arguments for slice L2
@@ -369,7 +371,6 @@ public:
   virtual int      set_slice(uint64_t id, slice_args * args) = 0;
   virtual int      add_slice_user(uint16_t rnti, uint64_t slice, int lock) = 0;
   virtual void     rem_slice_user(uint16_t rnti, uint64_t slice) = 0;
-  virtual void     get_user_slices(uint16_t rnti, std::map<uint16_t, std::list<uint64_t> > & users) = 0;
   virtual uint32_t get_slice_sched() = 0;
 }; // ran_interface_agent
 

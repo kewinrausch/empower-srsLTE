@@ -26,10 +26,12 @@
 
 #include "srslte/interfaces/sched_interface.h"
 #include "srslte/asn1/liblte_rrc.h"
+#include "srslte/asn1/liblte_mme.h" // For NAS inspection
 #include "srsenb/hdr/upper/rrc.h"
 #include "srslte/srslte.h"
 #include "srslte/asn1/liblte_mme.h"
 
+#include "srsenb/hdr/ran/ran.h"
 
 using srslte::byte_buffer_t;
 using srslte::bit_buffer_t;
@@ -174,8 +176,17 @@ void rrc::add_user(uint16_t rnti)
     users[rnti].rnti   = rnti;
     rlc->add_user(rnti);
     pdcp->add_user(rnti);
+    /* User inherits the PLMN of the eNB; careful that in Roaming mode this is
+     * not right, since the UE can have a different PLMN. We are aware of that
+     * only during RRC connection setup complete message, probably.
+     */
+    ran->add_slice_user(
+      rnti,
+      ran::plmn_to_id(
+        (int)cfg.sibs[0].sib.sib1.plmn_id[0].id.mcc,
+        (int)cfg.sibs[0].sib.sib1.plmn_id[0].id.mnc),
+      0);
     agent->add_user(rnti);
-    ran->add_slice_user(rnti, 0, 0);
 
     rrc_log->info("Added new user rnti=0x%x\n", rnti);
   } else {
@@ -1093,6 +1104,11 @@ void rrc::ue::handle_rrc_con_reest_req(LIBLTE_RRC_CONNECTION_REESTABLISHMENT_REQ
 
 void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu)
 {
+  int      i;
+  uint64_t imsi;
+
+  LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT srm;
+
   parent->rrc_log->info("RRCConnectionSetupComplete transaction ID: %d\n", msg->rrc_transaction_id);
 
   // TODO: msg->selected_plmn_id - used to select PLMN from SIB1 list
@@ -1100,7 +1116,23 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
 
   memcpy(pdu->msg, msg->dedicated_info_nas.msg, msg->dedicated_info_nas.N_bytes);
   pdu->N_bytes = msg->dedicated_info_nas.N_bytes;
+#if 0
+  if(liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)pdu, &srm) == LIBLTE_SUCCESS) {
+    if(srm.eps_mobile_id.type_of_id == LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI) {
+      imsi = 0;
 
+      // 
+      for(i = 0; i < 15; i++) {
+
+      }
+    } else if(srm.eps_mobile_id.type_of_id == LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI) {
+
+    }
+    
+    printf("EPS id type is %d\n", srm.eps_mobile_id.type_of_id);
+    printf("TMSI=%x\n", srm.eps_mobile_id.guti.m_tmsi);
+  }
+#endif
   // Acknowledge Dedicated Configuration
   parent->phy->set_conf_dedicated_ack(rnti, true);
   parent->mac->phy_config_enabled(rnti, true);
