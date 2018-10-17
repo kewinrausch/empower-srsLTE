@@ -547,8 +547,6 @@ void ran_multi_ssched::schedule(
       continue; // Next slice
     }
 
-Warning("%d resources for slice %" PRIu64 "\n", res, sid);
-
     // Set the groups which can are free for the user scheduler to allocate
     for(i = 0; i < RAN_DL_MAX_RGB; i++) {
       // In use?
@@ -1197,14 +1195,14 @@ int  dl_metric_ran::add_slice_user(uint16_t rnti, uint64_t slice, int lock)
    * should be given to the slice, since they are usually consumed for initial
    * connection with EPC.
    */
-  if(slice == RAN_DEFAULT_SLICE) {
+  //if(slice == RAN_DEFAULT_SLICE) {
     // Give 6 PRBg per TTI for the next 1 (non renewable) seconds
-    m_slice_sched->set_resources(slice, -1000, 6000);
-  }
+  //  m_slice_sched->set_resources(slice, -1000, 6000);
+  //}
   // User is being associated to a slice, so remove it form the default one
-  else {
-    m_slice_map[RAN_DEFAULT_SLICE].users.erase(rnti);
-  }
+  //else {
+  //  m_slice_map[RAN_DEFAULT_SLICE].users.erase(rnti);
+  //}
 
   Info("User %d associated to slice %" PRIu64 "\n", rnti, slice);
 

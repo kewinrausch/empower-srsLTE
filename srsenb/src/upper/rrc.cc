@@ -176,6 +176,7 @@ void rrc::add_user(uint16_t rnti)
     users[rnti].rnti   = rnti;
     rlc->add_user(rnti);
     pdcp->add_user(rnti);
+#ifdef HAVE_RAN_SLICER
     /* User inherits the PLMN of the eNB; careful that in Roaming mode this is
      * not right, since the UE can have a different PLMN. We are aware of that
      * only during RRC connection setup complete message, probably.
@@ -186,6 +187,7 @@ void rrc::add_user(uint16_t rnti)
         (int)cfg.sibs[0].sib.sib1.plmn_id[0].id.mcc,
         (int)cfg.sibs[0].sib.sib1.plmn_id[0].id.mnc),
       0);
+#endif
     agent->add_user(rnti);
 
     rrc_log->info("Added new user rnti=0x%x\n", rnti);
@@ -1105,7 +1107,7 @@ void rrc::ue::handle_rrc_con_reest_req(LIBLTE_RRC_CONNECTION_REESTABLISHMENT_REQ
 void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu)
 {
   int      i;
-  uint64_t imsi;
+  uint64_t tmp;
 
   LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT srm;
 
@@ -1118,21 +1120,36 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
   pdu->N_bytes = msg->dedicated_info_nas.N_bytes;
 #if 0
   if(liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)pdu, &srm) == LIBLTE_SUCCESS) {
-    if(srm.eps_mobile_id.type_of_id == LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI) {
-      imsi = 0;
+    switch(srm.eps_mobile_id.type_of_id) {
+    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
+      tmp = 0;
 
-      // 
-      for(i = 0; i < 15; i++) {
-
+      for(i = 0; i < 15; i++) {   // 15 is the limit in the liblte_mme protocols
+        tmp |= srm.eps_mobile_id.imsi[i];
+        tmp  = tmp << 4;
       }
-    } else if(srm.eps_mobile_id.type_of_id == LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI) {
 
+      // Update the IMSI
+      parent->agent->update_user_ID(rnti, 0, tmp, 0);
+
+      break;
+    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
+      // Update the PLMN and the TMSI
+      parent->agent->update_user_ID(
+        rnti, 
+        (srm.eps_mobile_id.guti.mcc << 12) | srm.eps_mobile_id.guti.mnc, 
+        srm.eps_mobile_id.guti.m_tmsi, 
+        0);
+      break;
+    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
+      // IMEI not handled right now
+      break;
+    default:
+      break;  
     }
-    
-    printf("EPS id type is %d\n", srm.eps_mobile_id.type_of_id);
-    printf("TMSI=%x\n", srm.eps_mobile_id.guti.m_tmsi);
   }
 #endif
+
   // Acknowledge Dedicated Configuration
   parent->phy->set_conf_dedicated_ack(rnti, true);
   parent->mac->phy_config_enabled(rnti, true);

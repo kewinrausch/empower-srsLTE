@@ -71,6 +71,16 @@
     m_logger->debug("AGENT: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
+#define Lock(x)                                     \
+  do {                                              \
+    pthread_spin_lock(x);                           \
+  } while(0)
+
+#define Unlock(x)                                   \
+  do {                                              \
+    pthread_spin_unlock(x);                         \
+  } while(0)
+
 /******************************************************************************
  *                                                                            *
  *                              Generic routines                              *
@@ -180,65 +190,6 @@ static int ea_disconnected()
 }
 
 /* Routine:
- *    ea_cell_setup
- * 
- * Abstract:
- *    Performs operations that must be executed in case of cell setup request 
- *    from the controller.
- * 
- * Assumptions:
- *    'em_agent' pointer is valid. No atomic operations are necessary here.
- * 
- * Arguments:
- *    - mod, Module ID which requested the report
- *    - pci, Physical cell ID to be reported
- * 
- * Returns:
- *    See emage.h for return value behavior
- */
-static int ea_cell_setup(uint32_t mod, uint16_t pci)
-{
-  char        buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  ep_cell_det cell;
-  int         blen;
-
-  all_args_t * args = enb::get_instance()->get_args();
-
-  // We only have one PCI now
-  if(pci != (uint16_t)args->enb.pci) {
-    /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     * TODO:
-     * Due the inability of the controller to handle errors, error reporting
-     * here is suppressed. This NEEDS to be changed, but we need controller
-     * support first!
-     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     */
-    return 0;
-  }
-
-  cell.cap       = EP_CCAP_NOTHING;
-  cell.pci       = (uint16_t)args->enb.pci;
-  cell.DL_earfcn = (uint16_t)args->rf.dl_earfcn;
-  cell.UL_earfcn = (uint16_t)args->rf.ul_earfcn;
-  cell.DL_prbs   = (uint8_t) args->enb.n_prb;
-  cell.UL_prbs   = (uint8_t) args->enb.n_prb;
-
-  blen = epf_single_ccap_rep(
-    buf,
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    cell.pci,
-    mod,
-    &cell);
-
-  if(blen < 0) {
-    return -1;
-  }
-
-  return em_send(em_agent->get_id(), buf, blen);
-}
-
-/* Routine:
  *    ea_enb_setup
  * 
  * Abstract:
@@ -261,24 +212,28 @@ static int ea_enb_setup(uint32_t mod)
   int          blen;
   all_args_t * args  = enb::get_instance()->get_args();
 
-  // This eNB can report and measure UE on its cells
-  enbd.capmask            = EP_ECAP_UE_REPORT | EP_ECAP_UE_MEASURE;
-
-  // The cell can perform MAC layer resource reporting
-  enbd.cells[0].cap       = EP_CCAP_MAC_REPORT;
-
-#ifdef HAVE_RAN_SLICER
-  // RAN slicing at MAC layer is enabled 
-  enbd.cells[0].cap      |= EP_CCAP_RAN_SLICING;
-#endif
+  enbd.cells[0].feat      = 
+    EP_CCAP_UE_REPORT | EP_CCAP_UE_MEASURE | EP_CCAP_CELL_MEASURE;
 
   enbd.cells[0].pci       = (uint16_t)args->enb.pci;
   enbd.cells[0].DL_earfcn = (uint16_t)args->rf.dl_earfcn;
   enbd.cells[0].UL_earfcn = (uint16_t)args->rf.ul_earfcn;
   enbd.cells[0].DL_prbs   = (uint8_t) args->enb.n_prb;
   enbd.cells[0].UL_prbs   = (uint8_t) args->enb.n_prb;
-  
+  enbd.cells[0].max_ues   = 2;
+
   enbd.nof_cells          = 1;
+
+#ifdef HAVE_RAN_SLICER
+  enbd.ran[0].pci                = (uint16_t)args->enb.pci;
+  enbd.ran[0].l1_mask            = 0;
+  enbd.ran[0].l2_mask            = EP_RAN_LAYER2_CAP_RBG_SLICING;
+  enbd.ran[0].l3_mask            = 0;
+  enbd.ran[0].l2.mac.slice_sched = em_agent->get_ran()->get_slice_sched();
+  enbd.ran[0].max_slices         = 8;
+
+  enbd.nof_ran                   = 1;
+#endif
 
   blen = epf_single_ecap_rep(
     buf, EMPOWER_AGENT_BUF_SMALL_SIZE,
@@ -475,7 +430,7 @@ static void slice_feedback(uint32_t mod)
     }
   }
 }
-
+#if 0
 /* Routine:
  *    ea_ran_setup_request
  * 
@@ -520,7 +475,7 @@ static int ea_ran_setup_request(uint32_t mod)
 
   return 0;
 }
-
+#endif
 /* Routine:
  *    ea_slice_request
  * 
@@ -770,7 +725,6 @@ static struct em_agent_ops empower_agent_ops = {
   0,                      /* init */
   0,                      /* release */
   ea_disconnected,        /* disconnected*/
-  ea_cell_setup,          /* cell_setup_request*/
   ea_enb_setup,           /* enb_setup_request*/
   ea_ue_report,           /* ue_report*/
   ea_ue_measure,          /* UE measurement */
@@ -778,7 +732,8 @@ static struct em_agent_ops empower_agent_ops = {
   ea_mac_report,          /* mac_report*/
   {
 #ifdef HAVE_RAN_SLICER
-    ea_ran_setup_request, /* ran.setup_request */
+    //ea_ran_setup_request, /* ran.setup_request */
+    0,
     ea_slice_request,     /* ran.slice_request */
     ea_slice_add,         /* ran.slice_add */
     ea_slice_rem,         /* ran.slice_rem */
@@ -1005,8 +960,7 @@ int empower_agent::reset()
   std::map<uint16_t, em_ue *>::iterator it;
 
   Debug("Resetting the state of the Agent\n");
-  
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
   // Reset any UE report
   m_uer_mod  = 0;
@@ -1046,7 +1000,7 @@ int empower_agent::reset()
     ue->m_next_obj_id  = 1;
     ue->m_next_rep_id  = 1;
   }
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 
   return 0;
 }
@@ -1103,7 +1057,7 @@ int empower_agent::setup_MAC_report(
   char        buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
   int         blen;
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
   for(i = 0; i < EMPOWER_AGENT_MAX_MACREP; i++) {
     // Slot is 'reserved' if the trigger ID is different than 0
@@ -1113,7 +1067,7 @@ int empower_agent::setup_MAC_report(
     }
   }
 
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 
   if(i == EMPOWER_AGENT_MAX_MACREP) {
     /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1225,7 +1179,7 @@ int empower_agent::setup_UE_period_meas(
     bw++;
   }
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
   for(i = 0; i < EMPOWER_AGENT_MAX_MEAS; i++) {
     if(m_ues[rnti]->m_meas[i].mod_id == 0) {
@@ -1233,7 +1187,7 @@ int empower_agent::setup_UE_period_meas(
     }
   }
 
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 
   if(i == EMPOWER_AGENT_MAX_MEAS) {
     return -1;
@@ -1465,10 +1419,10 @@ void empower_agent::process_DL_results(
     prbs += prbs_from_dci(&sched_result->data[i].dci, 1, args->enb.n_prb);
   }
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
   m_DL_prbs_used += prbs;
   m_DL_sf++;
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 }
 
 /* Routine:
@@ -1500,10 +1454,10 @@ void empower_agent::process_UL_results(
     prbs += prbs_from_dci(&sched_result->pusch[i].dci, 0, args->enb.n_prb);
   }
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
   m_UL_prbs_used += prbs;
   m_UL_sf++;
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 }
 
 /******************************************************************************
@@ -1534,7 +1488,7 @@ void empower_agent::add_user(uint16_t rnti)
   std::map<uint16_t, em_ue *>::iterator it;
   all_args_t * args = (all_args_t *)m_args;
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
   it = m_ues.find(rnti);
 
@@ -1573,7 +1527,7 @@ void empower_agent::add_user(uint16_t rnti)
     Debug("Added user %x (PLMN:%x)\n", rnti, m_ues[rnti]->m_plmn);
   }
 
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 }
 
 /* Routine:
@@ -1597,7 +1551,7 @@ void empower_agent::rem_user(uint16_t rnti)
   em_ue * ue;
   std::map<uint16_t, em_ue *>::iterator it;
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
   it = m_ues.find(rnti);
 
@@ -1621,7 +1575,7 @@ void empower_agent::rem_user(uint16_t rnti)
 #endif
   }
 
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 }
 
 /* Routine:
@@ -1649,30 +1603,37 @@ void empower_agent::update_user_ID(
   em_ue * ue;
   std::map<uint16_t, em_ue *>::iterator it;
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
   it = m_ues.find(rnti);
 
   if(it != m_ues.end()) {
     Debug("Updating user %x identity\n", rnti);
 
-    m_ues[rnti]->m_plmn = plmn;
-    m_ues[rnti]->m_imsi = imsi;
-    m_ues[rnti]->m_tmsi = tmsi;
-    m_ues[rnti]->m_id_dirty = 1; // Mark as to update
+    if(plmn) {
+      m_ues[rnti]->m_plmn = plmn;
+    }
+    
+    if(imsi) {
+      m_ues[rnti]->m_imsi = imsi;
+    }
+    
+    if(tmsi) {
+      m_ues[rnti]->m_tmsi = tmsi;
+    }
+    
+    m_ues[rnti]->m_id_dirty = 1; // Mark as identity to update
 
     if(m_uer_feat) {
       m_ues_dirty = 1;
     }
-
-    //delete it->second;
 
 #ifdef HAVE_RAN_SLICER
     m_RAN_def_dirty = 1;
 #endif
   }
 
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 }
 
 /* Routine:
@@ -1813,6 +1774,7 @@ void empower_agent::send_UE_report(void)
   
   em_ue *       ue;
   int           i       = 0;
+  int           r; /* will be reported? */
   char          buf[EMPOWER_AGENT_BUF_SMALL_SIZE];
   int           size;
   ep_ue_details ued[16];
@@ -1821,13 +1783,11 @@ void empower_agent::send_UE_report(void)
 
   memset(ued, 0, sizeof(ep_ue_details));
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
 
-  it = m_ues.begin();
-  it++;
-
-  while(it != m_ues.end() && i < 16) {
+  for(it = m_ues.begin(); i < 16 && it !=  m_ues.end(); /* Nothing */) {
     ue = it->second;
+    r  = 0;
 
     // State first; if the UE disconnects the identity is not interesting
     if(ue->m_state_dirty) {
@@ -1835,10 +1795,10 @@ void empower_agent::send_UE_report(void)
       ued[i].state= ue->m_state;
 
       ue->m_state_dirty = 0;
-
+      r = 1;
       // We are reporting the UE going offline
       if(ue->m_state == UE_STATUS_RADIO_DISCONNECTED) {
-        m_ues.erase(it++);
+        m_ues.erase(it++); // Increment iterator
         m_nof_ues--;
 
         delete ue;// Remove allocated UE descriptor
@@ -1855,13 +1815,17 @@ void empower_agent::send_UE_report(void)
       ued[i].tmsi = ue->m_tmsi;
 
       ue->m_id_dirty = 0;
+      r = 1;
     }
 
-    i++;  // Next reporting slot
-    ++it; // Next element
+    if(r) {
+      i++;// Next reporting slot
+    }
+
+    ++it; // Increment iterator
   }
 
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 
   size = epf_trigger_uerep_rep(
     buf,
@@ -2116,12 +2080,12 @@ void empower_agent::ran_check()
 
   memset(&det, 0, sizeof(ep_ran_slice_det));
 
-  pthread_spin_lock(&m_lock);
+//  Lock(&m_lock);
   if(!m_RAN_def_dirty) {
-    pthread_spin_unlock(&m_lock);
+ //   Unlock(&m_lock);
     return;
   }
-  pthread_spin_unlock(&m_lock);
+//  Unlock(&m_lock);
 
 //#ifdef HAVE_RAN_SLICER
 #if 0
@@ -2146,9 +2110,9 @@ void empower_agent::ran_check()
 
 #endif
 
-  pthread_spin_lock(&m_lock);
+  Lock(&m_lock);
   m_RAN_def_dirty = 0;
-  pthread_spin_unlock(&m_lock);
+  Unlock(&m_lock);
 
   return;
 }
