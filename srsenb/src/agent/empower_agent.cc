@@ -63,7 +63,7 @@
 
 #define Info(fmt, ...)                              \
   do {                                              \
-    m_logger->info("AGENT: "fmt, ##__VA_ARGS__);    \
+    m_logger->info("AGENT: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
 #define Debug(fmt, ...)                             \
@@ -316,7 +316,8 @@ static int ea_ue_measure(
  * Returns:
  *    See emage.h for return value behavior
  */
-static int ea_mac_report(
+static int ea_cell_measure(
+  uint16_t cell_id,
   uint32_t mod,
   int32_t  interval,
   int      trig_id)
@@ -328,7 +329,7 @@ static int ea_mac_report(
    * support first!
    * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    */
-  return em_agent->setup_MAC_report(mod, interval, trig_id);
+  return em_agent->setup_cell_measurement(cell_id, mod, interval, trig_id);
 }
 
 /* Routine:
@@ -724,12 +725,12 @@ static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
 static struct em_agent_ops empower_agent_ops = {
   0,                      /* init */
   0,                      /* release */
-  ea_disconnected,        /* disconnected*/
-  ea_enb_setup,           /* enb_setup_request*/
-  ea_ue_report,           /* ue_report*/
+  ea_disconnected,        /* disconnected */
+  ea_enb_setup,           /* enb_setup_request */
+  ea_ue_report,           /* ue_report */
   ea_ue_measure,          /* UE measurement */
-  0,                      /* handover_UE*/
-  ea_mac_report,          /* mac_report*/
+  0,                      /* handover_UE */
+  ea_cell_measure,        /* cell_measure */
   {
 #ifdef HAVE_RAN_SLICER
     //ea_ran_setup_request, /* ran.setup_request */
@@ -1034,15 +1035,16 @@ int empower_agent::setup_UE_report(uint32_t mod_id, int trig_id)
 }
 
 /* Routine:
- *    empower_agent::setup_MAC_report
+ *    empower_agent::setup_cell_measurement
  * 
  * Abstract:
- *    Setup the agent to handle MAC reporting
+ *    Setup the agent to handle cell measurements
  * 
  * Assumptions:
  *    ---
  * 
  * Arguments:
+ *    - cell_id, ID of the selected cell to measure
  *    - mod_id, module ID to report to
  *    - interval, interval in ms between the reports
  *    - trig_id, trigger id assigned to this operation
@@ -1050,23 +1052,58 @@ int empower_agent::setup_UE_report(uint32_t mod_id, int trig_id)
  * Returns:
  *    0 on success, otherwise a negative error code.
  */
-int empower_agent::setup_MAC_report(
-  uint32_t mod_id, uint32_t interval, int trig_id)
+int empower_agent::setup_cell_measurement(
+  uint16_t cell_id, uint32_t mod_id, uint32_t interval, int trig_id)
 {
-  int         i;
-  char        buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
-  int         blen;
+  int          i;
+  char         buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int          blen;
 
-  Lock(&m_lock);
+  all_args_t * args = (all_args_t *)m_args;
+  ep_cell_rep  rep;
 
-  for(i = 0; i < EMPOWER_AGENT_MAX_MACREP; i++) {
-    // Slot is 'reserved' if the trigger ID is different than 0
-    if(!m_macrep[i].trigger_id) {
-      // Reserve this slot!
-      m_macrep[i].trigger_id = trig_id;
-    }
+  if(trig_id > 0) {
+    Error("Trigger MAC reports not supported right now!\n");
+    return 0;
   }
 
+  rep.prb.DL_prbs      = (uint8_t)args->enb.n_prb;
+  rep.prb.DL_prbs_used = m_DL_prbs_used;
+  rep.prb.UL_prbs      = (uint8_t)args->enb.n_prb;
+  rep.prb.UL_prbs_used = m_UL_prbs_used;
+
+  blen = epf_sched_cell_meas_rep(
+      buf,
+      EMPOWER_AGENT_BUF_SMALL_SIZE,
+      m_id,
+      (uint16_t)args->enb.pci,
+      mod_id,
+      interval,
+      &rep);
+
+  if(blen < 0)
+  {
+    Error("Cannot format cell measurement message!\n");
+    return 0;
+  }
+
+  em_send(m_id, buf, blen);
+
+#if 0
+  Lock(&m_lock);
+
+  if(trig_id > 0) {
+    for(i = 0; i < EMPOWER_AGENT_MAX_MACREP; i++) {
+      // Slot is 'reserved' if the trigger ID is different than 0
+      if(!m_macrep[i].trigger_id) {
+        // Reserve this slot!
+        m_macrep[i].trigger_id = trig_id;
+      }
+    }
+  } else {
+    
+  }
+  
   Unlock(&m_lock);
 
   if(i == EMPOWER_AGENT_MAX_MACREP) {
@@ -1083,12 +1120,13 @@ int empower_agent::setup_MAC_report(
   // Setup the MAC report request here
 
   m_macrep[i].mod_id   = mod_id;
-  m_macrep[i].interval = interval;
+  m_macrep[i].interval = interval > 0 ? interval : 1000;
   m_macrep[i].DL_acc   = 0;
   m_macrep[i].UL_acc   = 0;
   clock_gettime(CLOCK_REALTIME, &m_macrep[i].last);
 
   Debug("New MAC report from module %d ready\n", mod_id);
+#endif
 
   return 0;
 }
@@ -1710,7 +1748,7 @@ void empower_agent::report_RRC_measure(
  *                    Agent interaction with controller                       *
  *                                                                            *
  ******************************************************************************/
-
+#if 0
 /* Routine:
  *    empower_agent::send_MAC_report
  * 
@@ -1752,7 +1790,7 @@ void empower_agent::send_MAC_report(uint32_t mod_id, ep_macrep_det * det)
 
   em_send(m_id, buf, size);
 }
-
+#endif
 /* Routine:
  *    empower_agent::send_UE_report
  * 
@@ -1868,21 +1906,31 @@ void empower_agent::send_UE_meas(em_ue::ue_meas * m)
   int           size;
 
   all_args_t * args = (all_args_t *)m_args;
-  ep_ue_measure epm[EMPOWER_AGENT_MAX_MEAS];
+  ep_ue_report epr;
 
-  epm[0].meas_id = m->id;
-  epm[0].pci     = m->carrier.pci;
-  epm[0].rsrp    = m->carrier.rsrp;
-  epm[0].rsrq    = m->carrier.rsrq;
+  memset(&epr, 0, sizeof(epr));
 
-  for(i = 0, j = 1; i < EMPOWER_AGENT_MAX_CELL_MEAS; i++) {
+  // Fill in the carrier first
+  epr.rrc[0].meas_id = m->id;
+  epr.rrc[0].pci     = m->carrier.pci;
+  epr.rrc[0].rsrp    = m->carrier.rsrp;
+  epr.rrc[0].rsrq    = m->carrier.rsrq;
+
+  epr.nof_rrc++;
+
+  for(
+    i = 0, j = 1; 
+    i < EMPOWER_AGENT_MAX_CELL_MEAS && j < EP_UE_RRC_MEAS_MAX; 
+    i++) 
+  {
+    // Fill in any other dirty measurement
     if(m->neigh[i].dirty) {
-      epm[j].meas_id = m->id;
-      epm[j].pci     = m->neigh[i].pci;
-      epm[j].rsrp    = m->neigh[i].rsrp;
-      epm[j].rsrq    = m->neigh[i].rsrq;
+      epr.rrc[j].meas_id = m->id;
+      epr.rrc[j].pci     = m->neigh[i].pci;
+      epr.rrc[j].rsrp    = m->neigh[i].rsrp;
+      epr.rrc[j].rsrq    = m->neigh[i].rsrq;
 
-      m->neigh[i].dirty = 0;
+      m->neigh[i].dirty  = 0;
 
       j++;
     }
@@ -1894,9 +1942,7 @@ void empower_agent::send_UE_meas(em_ue::ue_meas * m)
     m_id,
     (uint16_t)args->enb.pci,
     m->mod_id,
-    j > m->max_meas ? m->max_meas : j,
-    m->max_meas,
-    epm);
+    &epr);
 
   if(size < 0) {
     Error("Cannot format UE measurement reply\n");
@@ -1992,7 +2038,7 @@ void empower_agent::measure_check()
     }
   }
 }
-
+#if 0
 /* Routine:
  *    empower_agent::macrep_check
  * 
@@ -2053,7 +2099,7 @@ void empower_agent::macrep_check()
     }
   }
 }
-
+#endif
 /* Routine:
  *    empower_agent::ran_check
  * 
@@ -2266,7 +2312,7 @@ void * empower_agent::agent_loop(void * args)
     }
 
     a->measure_check();
-    a->macrep_check();
+    //a->macrep_check();
 
     usleep(100000); // Sleep for 100 ms
   }

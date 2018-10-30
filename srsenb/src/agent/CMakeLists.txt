@@ -18,11 +18,11 @@
 # and at http://www.gnu.org/licenses/.
 #
 
-file(GLOB SOURCES "*.cc")
+file(GLOB SOURCES "dummy_agent.cc")
 
-if(NOT ENABLE_EMPOWER_AGENT)
-  list(REMOVE_ITEM SOURCES empower_agent.cc)
-endif(NOT ENABLE_EMPOWER_AGENT)
+if(ENABLE_EMPOWER_AGENT)
+  list(APPEND SOURCES empower_agent.cc)
+endif(ENABLE_EMPOWER_AGENT)
 
 add_library(srsenb_agent STATIC ${SOURCES})
 

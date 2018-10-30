@@ -107,8 +107,9 @@ public: // class empower_agent
   // Request an UE report to the agent
   int  setup_UE_report(uint32_t mod_id, int trig_id);
 
-  // Request a MAC report to the agent
-  int  setup_MAC_report(uint32_t mod_id, uint32_t interval, int trig_id);
+  // Request a cell measurement to the agent
+  int  setup_cell_measurement(
+   uint16_t cell_id, uint32_t mod_id, uint32_t interval, int trig_id);
 
   // Request an UE measurement to the agent
   int  setup_UE_period_meas(
@@ -267,7 +268,7 @@ private: // class empower_agent
   void measure_check();
 
   // Perform a check on MAC reporting mechanism
-  void macrep_check();
+  //void macrep_check();
 
   // Perform a check on RAN reporting mechanism
   void ran_check();
@@ -288,7 +289,7 @@ private: // class empower_agent
    */
 
   // Send a MAC report to the controller
-  void send_MAC_report(uint32_t mod_id, ep_macrep_det * det);
+  //void send_MAC_report(uint32_t mod_id, ep_macrep_det * det);
 
   // Send an UE report to the controller
   void send_UE_report(void);

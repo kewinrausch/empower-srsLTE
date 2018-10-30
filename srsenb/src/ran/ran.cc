@@ -52,6 +52,7 @@
 #define Debug(fmt, ...)                        \
   do {                                         \
     m_log->debug("RAN: "fmt, ##__VA_ARGS__);   \
+    printf("RAN: "fmt, ##__VA_ARGS__);   \
   } while(0)
 
 
