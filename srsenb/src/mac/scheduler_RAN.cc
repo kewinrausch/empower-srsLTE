@@ -390,6 +390,7 @@ void ran_rr_usched::schedule(
 ran_multi_ssched::ran_multi_ssched()
 {
   m_bw = 0;
+  m_id = RAN_MAC_SLICE_MULTI;
 }
 
 /* Routine:
@@ -627,8 +628,6 @@ int ran_multi_ssched::set_resources(uint64_t id, int tti, int res)
   m_slices[id].tti_credit = tti;
   m_slices[id].res_org    = res;
   m_slices[id].res_credit = res;
-
-//printf("Slice %" PRIu64 " resources set to space=%d, time=%d\n", id, res, tti);
 
   return 0;
 }

@@ -210,6 +210,7 @@ public:
     void send_connection_reconf_new_bearer(LIBLTE_S1AP_E_RABTOBESETUPLISTBEARERSUREQ_STRUCT *e);
     void send_connection_reconf_upd(srslte::byte_buffer_t *pdu); 
     void send_connection_reconf_meas(LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg);
+    void send_identity_request();
     void send_security_mode_command();
     void send_ue_cap_enquiry();
     void parse_ul_dcch(uint32_t lcid, srslte::byte_buffer_t* pdu);
@@ -217,6 +218,7 @@ public:
     void handle_rrc_con_req(LIBLTE_RRC_CONNECTION_REQUEST_STRUCT *msg);
     void handle_rrc_con_reest_req(LIBLTE_RRC_CONNECTION_REESTABLISHMENT_REQUEST_STRUCT *msg); 
     void handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu);
+    void handle_rrc_ul_info_transfer(LIBLTE_RRC_UL_INFORMATION_TRANSFER_STRUCT * msg, srslte::byte_buffer_t *pdu);
     void handle_rrc_meas_report(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * msg);
     void handle_rrc_reconf_complete(LIBLTE_RRC_CONNECTION_RECONFIGURATION_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu);
 
@@ -300,6 +302,9 @@ public:
       uint32_t                                    teid_out;
       uint32_t                                    teid_in;
     }erab_t;
+
+    int mask_id_resp;
+
     std::map<uint8_t, erab_t> erabs;
     int sr_sched_sf_idx;
     int sr_sched_prb_idx;

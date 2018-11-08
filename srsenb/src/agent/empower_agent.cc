@@ -63,7 +63,7 @@
 
 #define Info(fmt, ...)                              \
   do {                                              \
-    m_logger->info("AGENT: "fmt, ##__VA_ARGS__);   \
+    m_logger->info("AGENT: "fmt, ##__VA_ARGS__);    \
   } while(0)
 
 #define Debug(fmt, ...)                             \
@@ -394,7 +394,7 @@ static void slice_feedback(uint32_t mod)
 
   // User memory allocated for det, this way we directly save them there
   slice_inf.users     = det.users;
-  slice_inf.nof_users = det.nof_users;
+  slice_inf.nof_users = EP_RAN_USERS_MAX;
 
   nof_slices = em_agent->get_ran()->get_slices(32, slices);
 
@@ -405,7 +405,8 @@ static void slice_feedback(uint32_t mod)
         continue;
       }
 
-      det.nof_users = EP_RAN_USERS_MAX;
+      //det.nof_users = EP_RAN_USERS_MAX;
+      slice_inf.nof_users = EP_RAN_USERS_MAX;
 
       if(em_agent->get_ran()->get_slice_info(slices[i], &slice_inf)) {
         continue;
@@ -512,7 +513,7 @@ static int ea_slice_request(uint32_t mod, uint64_t slice)
   // Request all the slices setup
   if(slice == 0) {
     // Straight send the slices statuses, regardless of the ID requested
-    slice_feedback(mod);
+    em_agent->m_RAN_def_dirty = 1;
 
     return 0;
   }
@@ -590,11 +591,9 @@ int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
   }
   
   slice_inf.users     = usr;
-  //slice_inf.nof_users = conf->nof_users;
 
   // PLMN is used in the slice ID for this moment
   if(em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff))) {
-//printf("Cannot add slice %" PRIu64 "\n", slice); // <-------------------------------------------------------------------
     /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      * TODO:
      * Due the inability of the controller to handle errors, error reporting
@@ -604,10 +603,8 @@ int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
      */
     return 0;
   }
-//printf("Added slice %" PRIu64 "\n", slice); // <------------------------------------------------------------------------
   // Set the slice with it's starting configuration
   if(em_agent->get_ran()->set_slice(slice, &slice_inf)) {
-//printf("Cannot set slice %" PRIu64 "\n", slice); // <-------------------------------------------------------------------
     /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      * TODO:
      * Due the inability of the controller to handle errors, error reporting
@@ -617,8 +614,8 @@ int ea_slice_add(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
      */
     return 0;
   }
-//printf("Set slice %" PRIu64 "\n", slice); // <--------------------------------------------------------------------------
-  slice_feedback(mod);
+
+  em_agent->m_RAN_def_dirty = 1;
 
   return 0;
 }
@@ -646,7 +643,7 @@ static int ea_slice_rem(uint32_t mod, uint64_t slice)
   int                blen;
 
   em_agent->get_ran()->rem_slice(slice);
-  slice_feedback(mod);
+  em_agent->m_RAN_def_dirty = 1;
 
   return 0;
 }
@@ -694,7 +691,6 @@ static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
   em_agent->get_ran()->add_slice(slice, ((slice >> 32) & 0x00ffffff));
 
   if(em_agent->get_ran()->set_slice(slice, &slice_inf)) {
-//printf("Slice %" PRIu64 " does not exists!\n", slice); // <-------------------------------------------------------------
     /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
      * TODO:
      * Due the inability of the controller to handle errors, error reporting
@@ -704,8 +700,8 @@ static int ea_slice_conf(uint32_t mod, uint64_t slice, em_RAN_conf * conf)
      */
     return 0;
   }
-//printf("Set slice %" PRIu64 "\n", slice); // <--------------------------------------------------------------------------
-  slice_feedback(mod);
+
+  em_agent->m_RAN_def_dirty = 1;
 
   return 0;
 }
@@ -1553,14 +1549,14 @@ void empower_agent::add_user(uint16_t rnti)
       0, 
       sizeof(em_ue::ue_meas) * EMPOWER_AGENT_MAX_MEAS);
 
+    if(m_uer_feat) {
+      m_ues_dirty = 1;
+    }
+
 #ifdef HAVE_RAN_SLICER
     // Creation of user triggers modification at RAN layer for the agent
     m_RAN_def_dirty = 1;
 #endif
-
-    if(m_uer_feat) {
-      m_ues_dirty = 1;
-    }
 
     Debug("Added user %x (PLMN:%x)\n", rnti, m_ues[rnti]->m_plmn);
   }
@@ -2124,38 +2120,19 @@ void empower_agent::ran_check()
   ep_ran_slice_det det;
   all_args_t *     args = (all_args_t *)m_args;
 
-  memset(&det, 0, sizeof(ep_ran_slice_det));
-
-//  Lock(&m_lock);
-  if(!m_RAN_def_dirty) {
- //   Unlock(&m_lock);
+  /* I do not care of the lock here; if we miss the update now, then do it at 
+   * the next round of RAN_check. This variable is set in one place only.
+   */
+  if(m_RAN_def_dirty == 0) {
     return;
   }
-//  Unlock(&m_lock);
 
-//#ifdef HAVE_RAN_SLICER
-#if 0
-  det.nof_users       = 16;
-  slice_inf.users     = det.users;
-  slice_inf.nof_users = det.nof_users;
+  memset(&det, 0, sizeof(ep_ran_slice_det));
 
-  m_ran->get_slice_info(9622457614860288L, &slice_inf);
-  
-  blen = epf_single_ran_slice_rep(
-    buf, 
-    EMPOWER_AGENT_BUF_SMALL_SIZE,
-    em_agent->get_id(),
-    (uint16_t)args->enb.pci,
-    m_RAN_mod,
-    9622457614860288L,
-    &det);
+  // Send feedback of all the slices!
+  slice_feedback(m_RAN_mod);
 
-  if(blen > 0) {
-    em_send(em_agent->get_id(), buf, blen);
-  }
-
-#endif
-
+  // Now since we want to set this, we need to lock it!
   Lock(&m_lock);
   m_RAN_def_dirty = 0;
   Unlock(&m_lock);

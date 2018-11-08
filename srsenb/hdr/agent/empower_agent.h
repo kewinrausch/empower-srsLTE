@@ -78,6 +78,8 @@ public: // class empower_agent
     struct timespec last;
   } macrep;
 
+  uint32_t m_RAN_def_dirty;
+
   empower_agent();
   ~empower_agent();
 
@@ -246,7 +248,7 @@ private: // class empower_agent
   // RAN-related variables
 
   uint32_t               m_RAN_feat; // RAN feature enabled?
-  uint32_t               m_RAN_def_dirty; // Modifications at RAN level?
+  //uint32_t               m_RAN_def_dirty; // Modifications at RAN level?
   uint32_t               m_RAN_mod; // RAN module ID to use
 
   // Threading-related variables

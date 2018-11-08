@@ -63,6 +63,8 @@
 
 // RAN slicing MAC level slices scheduler has this common base
 #define RAN_MAC_SLICE_SCHED     0x00000000
+// RAN slicing MAC slice-level scheduler for multiple slices instances
+#define RAN_MAC_SLICE_MULTI     0x00000001
 // RAN slicing MAC slice-level scheduler for 2 slice instances
 #define RAN_MAC_SLICE_DUO       0x00000002
 
