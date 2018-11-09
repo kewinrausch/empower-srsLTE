@@ -394,7 +394,6 @@ static void slice_feedback(uint32_t mod)
 
   // User memory allocated for det, this way we directly save them there
   slice_inf.users     = det.users;
-  slice_inf.nof_users = EP_RAN_USERS_MAX;
 
   nof_slices = em_agent->get_ran()->get_slices(32, slices);
 
@@ -405,7 +404,6 @@ static void slice_feedback(uint32_t mod)
         continue;
       }
 
-      //det.nof_users = EP_RAN_USERS_MAX;
       slice_inf.nof_users = EP_RAN_USERS_MAX;
 
       if(em_agent->get_ran()->get_slice_info(slices[i], &slice_inf)) {
@@ -1664,6 +1662,22 @@ void empower_agent::update_user_ID(
 
 #ifdef HAVE_RAN_SLICER
     m_RAN_def_dirty = 1;
+#endif
+
+#if 0
+  // Always operate on that UE
+  if(imsi == 222930000000101L) {
+    // Add it to a slice
+    m_ran->add_slice_user(
+      rnti,
+      0x00222f9301000000,
+      0);
+
+    // Remove from the default one '00'
+    m_ran->rem_slice_user(
+      rnti,
+      0x00222f9300000000);
+  }
 #endif
   }
 
