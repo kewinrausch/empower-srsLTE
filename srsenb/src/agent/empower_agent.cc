@@ -430,6 +430,7 @@ static void slice_feedback(uint32_t mod)
     }
   }
 }
+
 #if 0
 /* Routine:
  *    ea_ran_setup_request
@@ -2143,8 +2144,10 @@ void empower_agent::ran_check()
 
   memset(&det, 0, sizeof(ep_ran_slice_det));
 
+#ifdef HAVE_RAN_SLICER
   // Send feedback of all the slices!
   slice_feedback(m_RAN_mod);
+#endif
 
   // Now since we want to set this, we need to lock it!
   Lock(&m_lock);
