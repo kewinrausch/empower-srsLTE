@@ -146,7 +146,7 @@ class nas_interface_ue
 {
 public:
   virtual bool attach_request() = 0;
-  virtual bool deattach_request() = 0;
+  virtual bool detach_request() = 0;
 };
 
 // NAS interface for UE
@@ -228,8 +228,8 @@ public:
 class pdcp_interface_gw
 {
 public:
-  virtual void write_sdu(uint32_t lcid, srslte::byte_buffer_t *sdu) = 0;
-  virtual bool is_drb_enabled(uint32_t lcid) = 0;
+  virtual void write_sdu(uint32_t lcid, srslte::byte_buffer_t *sdu, bool blocking) = 0;
+  virtual bool is_lcid_enabled(uint32_t lcid) = 0;
 };
 
 // PDCP interface for RRC
@@ -238,8 +238,9 @@ class pdcp_interface_rrc
 public:
   virtual void reestablish() = 0;
   virtual void reset() = 0;
-  virtual void write_sdu(uint32_t lcid, srslte::byte_buffer_t *sdu) = 0;
+  virtual void write_sdu(uint32_t lcid, srslte::byte_buffer_t *sdu, bool blocking = true) = 0;
   virtual void add_bearer(uint32_t lcid, srslte::srslte_pdcp_config_t cnfg = srslte::srslte_pdcp_config_t()) = 0;
+  virtual void change_lcid(uint32_t old_lcid, uint32_t new_lcid) = 0;
   virtual void config_security(uint32_t lcid,
                                uint8_t *k_enc_,
                                uint8_t *k_int_,
@@ -251,6 +252,8 @@ public:
                                    srslte::INTEGRITY_ALGORITHM_ID_ENUM integ_algo_) = 0;
   virtual void enable_integrity(uint32_t lcid) = 0;
   virtual void enable_encryption(uint32_t lcid) = 0;
+  virtual uint32_t get_dl_count(uint32_t lcid) = 0;
+  virtual uint32_t get_ul_count(uint32_t lcid) = 0;
 };
 
 // PDCP interface for RLC
@@ -271,9 +274,12 @@ class rlc_interface_rrc
 public:
   virtual void reset() = 0;
   virtual void reestablish() = 0;
+  virtual void reestablish(uint32_t lcid) = 0;
   virtual void add_bearer(uint32_t lcid) = 0;
   virtual void add_bearer(uint32_t lcid, srslte::srslte_rlc_config_t cnfg) = 0;
   virtual void add_bearer_mrb(uint32_t lcid) = 0;
+  virtual void del_bearer(uint32_t lcid) = 0;
+  virtual void change_lcid(uint32_t old_lcid, uint32_t new_lcid) = 0;
 };
 
 // RLC interface for PDCP
@@ -282,7 +288,7 @@ class rlc_interface_pdcp
 public:
   /* PDCP calls RLC to push an RLC SDU. SDU gets placed into the RLC buffer and MAC pulls
    * RLC PDUs according to TB size. */
-  virtual void write_sdu(uint32_t lcid,  srslte::byte_buffer_t *sdu) = 0;
+  virtual void write_sdu(uint32_t lcid,  srslte::byte_buffer_t *sdu, bool blocking = true) = 0;
   virtual bool rb_is_um(uint32_t lcid) = 0;
 };
 
@@ -542,6 +548,7 @@ typedef struct {
   bool sic_pss_enabled;
   float rx_gain_offset;
   bool pdsch_csi_enabled;
+  bool pdsch_8bit_decoder;
   uint32_t intra_freq_meas_len_ms;
   uint32_t intra_freq_meas_period_ms;
 } phy_args_t; 

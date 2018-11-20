@@ -22,13 +22,16 @@
  *
  */
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <errno.h>
 #include <signal.h>
 #include <boost/program_options.hpp>
 #include <boost/algorithm/string.hpp>
+#include "srslte/common/crash_handler.h"
 #include "srslte/common/bcd_helpers.h"
 #include "srslte/common/config_file.h"
+#include "srslte/build_info.h"
 #include "srsepc/hdr/mme/mme.h"
 #include "srsepc/hdr/hss/hss.h"
 #include "srsepc/hdr/spgw/spgw.h"
@@ -39,7 +42,7 @@ namespace bpo = boost::program_options;
 
 bool running = true;
 
-void 
+void
 sig_int_handler(int signo){
   running = false;
 }
@@ -84,6 +87,7 @@ parse_args(all_args_t *args, int argc, char* argv[]) {
   string mme_apn;
   string spgw_bind_addr;
   string sgi_if_addr;
+  string sgi_if_name;
   string dns_addr;
   string hss_db_file;
   string hss_auth_algo;
@@ -100,35 +104,39 @@ parse_args(all_args_t *args, int argc, char* argv[]) {
   bpo::options_description common("Configuration options");
   common.add_options()
 
-    ("mme.mme_code",        bpo::value<string>(&mme_code)->default_value("0x01"),                    "MME Code")
-    ("mme.name",            bpo::value<string>(&mme_name)->default_value("srsmme01"), "MME Name")
-    ("mme.mme_group",       bpo::value<string>(&mme_group)->default_value("0x01"),                     "Cell ID")
-    ("mme.tac",             bpo::value<string>(&tac)->default_value("0x0"),                          "Tracking Area Code")
-    ("mme.mcc",             bpo::value<string>(&mcc)->default_value("001"),                          "Mobile Country Code")
-    ("mme.mnc",             bpo::value<string>(&mnc)->default_value("01"),                           "Mobile Network Code")
-    ("mme.mme_bind_addr",   bpo::value<string>(&mme_bind_addr)->default_value("127.0.0.1"),"IP address of MME for S1 connnection")
-    ("mme.dns_addr",        bpo::value<string>(&dns_addr)->default_value("8.8.8.8"),"IP address of the DNS server for the UEs")
-    ("mme.apn",             bpo::value<string>(&mme_apn)->default_value(""),                   "Set Access Point Name (APN) for data services")
-    ("hss.db_file",         bpo::value<string>(&hss_db_file)->default_value("ue_db.csv"),".csv file that stores UE's keys")
-    ("hss.auth_algo",       bpo::value<string>(&hss_auth_algo)->default_value("milenage"),"HSS uthentication algorithm.")
-    ("spgw.gtpu_bind_addr", bpo::value<string>(&spgw_bind_addr)->default_value("127.0.0.1"),"IP address of SP-GW for the S1-U connection")
-    ("spgw.sgi_if_addr",    bpo::value<string>(&sgi_if_addr)->default_value("176.16.0.1"),"IP address of TUN interface for the SGi connection")
+    ("mme.mme_code",        bpo::value<string>(&mme_code)->default_value("0x01"),            "MME Code")
+    ("mme.name",            bpo::value<string>(&mme_name)->default_value("srsmme01"),        "MME Name")
+    ("mme.mme_group",       bpo::value<string>(&mme_group)->default_value("0x01"),           "Cell ID")
+    ("mme.tac",             bpo::value<string>(&tac)->default_value("0x0"),                  "Tracking Area Code")
+    ("mme.mcc",             bpo::value<string>(&mcc)->default_value("001"),                  "Mobile Country Code")
+    ("mme.mnc",             bpo::value<string>(&mnc)->default_value("01"),                   "Mobile Network Code")
+    ("mme.mme_bind_addr",   bpo::value<string>(&mme_bind_addr)->default_value("127.0.0.1"),  "IP address of MME for S1 connnection")
+    ("mme.dns_addr",        bpo::value<string>(&dns_addr)->default_value("8.8.8.8"),         "IP address of the DNS server for the UEs")
+    ("mme.apn",             bpo::value<string>(&mme_apn)->default_value(""),                 "Set Access Point Name (APN) for data services")
+    ("hss.db_file",         bpo::value<string>(&hss_db_file)->default_value("ue_db.csv"),    ".csv file that stores UE's keys")
+    ("hss.auth_algo",       bpo::value<string>(&hss_auth_algo)->default_value("milenage"),   "HSS uthentication algorithm.")
+    ("spgw.gtpu_bind_addr", bpo::value<string>(&spgw_bind_addr)->default_value("127.0.0.1"), "IP address of SP-GW for the S1-U connection")
+    ("spgw.sgi_if_addr",    bpo::value<string>(&sgi_if_addr)->default_value("176.16.0.1"),   "IP address of TUN interface for the SGi connection")
+    ("spgw.sgi_if_name",    bpo::value<string>(&sgi_if_name)->default_value("srs_spgw_sgi"), "Name of TUN interface for the SGi connection")
 
-    ("log.s1ap_level",     bpo::value<string>(&args->log_args.s1ap_level),   "MME S1AP log level")
-    ("log.s1ap_hex_limit", bpo::value<int>(&args->log_args.s1ap_hex_limit),  "MME S1AP log hex dump limit")
-    ("log.gtpc_level",     bpo::value<string>(&args->log_args.gtpc_level),   "MME GTPC log level")
-    ("log.gtpc_hex_limit", bpo::value<int>(&args->log_args.gtpc_hex_limit),  "MME GTPC log hex dump limit")
-    ("log.spgw_level",     bpo::value<string>(&args->log_args.spgw_level),   "SPGW log level")
-    ("log.spgw_hex_limit", bpo::value<int>(&args->log_args.spgw_hex_limit),  "SPGW log hex dump limit")
+    ("pcap.enable",         bpo::value<bool>(&args->mme_args.s1ap_args.pcap_enable)->default_value(false),         "Enable S1AP PCAP")
+    ("pcap.filename",       bpo::value<string>(&args->mme_args.s1ap_args.pcap_filename)->default_value("/tmp/epc.pcap"), "PCAP filename")
+
+    ("log.s1ap_level",      bpo::value<string>(&args->log_args.s1ap_level),   "MME S1AP log level")
+    ("log.s1ap_hex_limit",  bpo::value<int>(&args->log_args.s1ap_hex_limit),  "MME S1AP log hex dump limit")
+    ("log.gtpc_level",      bpo::value<string>(&args->log_args.gtpc_level),   "MME GTPC log level")
+    ("log.gtpc_hex_limit",  bpo::value<int>(&args->log_args.gtpc_hex_limit),  "MME GTPC log hex dump limit")
+    ("log.spgw_level",      bpo::value<string>(&args->log_args.spgw_level),   "SPGW log level")
+    ("log.spgw_hex_limit",  bpo::value<int>(&args->log_args.spgw_hex_limit),  "SPGW log hex dump limit")
     //("log.gtpu_level",    bpo::value<string>(&args->log.gtpu_level),  "GTPU log level")
-    ("log.hss_level",     bpo::value<string>(&args->log_args.hss_level),   "HSS log level")
-    ("log.hss_hex_limit", bpo::value<int>(&args->log_args.hss_hex_limit),  "HSS log hex dump limit")
+    ("log.hss_level",       bpo::value<string>(&args->log_args.hss_level),   "HSS log level")
+    ("log.hss_hex_limit",   bpo::value<int>(&args->log_args.hss_hex_limit),  "HSS log hex dump limit")
     //("log.gtpu_hex_limit",bpo::value<int>(&args->log.gtpu_hex_limit), "GTPU log hex dump limit")
 
-    ("log.all_level",     bpo::value<string>(&args->log_args.all_level)->default_value("info"),   "ALL log level")
-    ("log.all_hex_limit", bpo::value<int>(&args->log_args.all_hex_limit)->default_value(32),  "ALL log hex dump limit")
+    ("log.all_level",       bpo::value<string>(&args->log_args.all_level)->default_value("info"),   "ALL log level")
+    ("log.all_hex_limit",   bpo::value<int>(&args->log_args.all_hex_limit)->default_value(32),  "ALL log hex dump limit")
 
-    ("log.filename",      bpo::value<string>(&args->log_args.filename)->default_value("/tmp/epc.log"),"Log filename")
+    ("log.filename",        bpo::value<string>(&args->log_args.filename)->default_value("/tmp/epc.log"),"Log filename")
     ;
 
   // Positional options - config file location
@@ -141,7 +149,7 @@ parse_args(all_args_t *args, int argc, char* argv[]) {
 
   // these options are allowed on the command line
   bpo::options_description cmdline_options;
-  cmdline_options.add(common).add(position).add(general);  
+  cmdline_options.add(common).add(position).add(general);
 
   // parse the command line and store result in vm
   bpo::variables_map vm;
@@ -213,6 +221,7 @@ parse_args(all_args_t *args, int argc, char* argv[]) {
   args->mme_args.s1ap_args.mme_apn = mme_apn;
   args->spgw_args.gtpu_bind_addr = spgw_bind_addr;
   args->spgw_args.sgi_if_addr = sgi_if_addr;
+  args->spgw_args.sgi_if_name = sgi_if_name;
   args->hss_args.db_file = hss_db_file;
   args->hss_args.auth_algo = hss_auth_algo;
 
@@ -276,27 +285,53 @@ level(std::string l)
   }
 }
 
+std::string get_build_mode()
+{
+  return std::string(srslte_get_build_mode());
+}
+
+std::string get_build_info()
+{
+  if (std::string(srslte_get_build_info()) == "") {
+    return std::string(srslte_get_version());
+  }
+  return std::string(srslte_get_build_info());
+}
+
+std::string get_build_string()
+{
+  std::stringstream ss;
+  ss << "Built in " << get_build_mode() << " mode using " << get_build_info() << "." << std::endl;
+  return ss.str();
+}
+
 int
 main (int argc,char * argv[] )
-{  
-  cout << endl <<"---  Software Radio Systems EPC  ---" << endl << endl;
+{
   signal(SIGINT, sig_int_handler);
   signal(SIGTERM, sig_int_handler);
   signal(SIGKILL, sig_int_handler);
 
+  // print build info
+  cout << endl << get_build_string() << endl;
+
+  cout << endl <<"---  Software Radio Systems EPC  ---" << endl << endl;
+  srslte_debug_handle_crash(argc, argv);
+
   all_args_t args;
   parse_args(&args, argc, argv); 
- 
+
   srslte::logger_stdout logger_stdout;
   srslte::logger_file   logger_file;
   srslte::logger        *logger;
 
- 
   /*Init logger*/
   if (!args.log_args.filename.compare("stdout")) {
     logger = &logger_stdout;
   } else {
     logger_file.init(args.log_args.filename);
+    logger_file.log("\n\n");
+    logger_file.log(get_build_string().c_str());
     logger_file.log("\n---  Software Radio Systems EPC log ---\n\n");
     logger = &logger_file;
   }
@@ -338,16 +373,16 @@ main (int argc,char * argv[] )
   if (spgw->init(&args.spgw_args,&spgw_log)) {
     cout << "Error initializing SP-GW" << endl;
     exit(1);
-  } 
+  }
 
-  mme->start(); 
+  mme->start();
   spgw->start();
   while(running) {
     sleep(1);
   }
 
   mme->stop();
-  mme->cleanup();   
+  mme->cleanup();
   spgw->stop();
   spgw->cleanup();
   hss->stop();

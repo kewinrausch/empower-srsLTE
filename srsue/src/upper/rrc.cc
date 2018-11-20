@@ -237,8 +237,8 @@ bool rrc::have_drb() {
   return drb_up;
 }
 
-void rrc::set_args(rrc_args_t *args) {
-  memcpy(&this->args, args, sizeof(rrc_args_t));
+void rrc::set_args(rrc_args_t args_) {
+  args = args_;
 }
 
 /*
@@ -248,11 +248,14 @@ void rrc::run_thread() {
   while(running) {
     cmd_msg_t msg = cmd_q.wait_pop();
     switch(msg.command) {
-      case cmd_msg_t::STOP:
-        return;
+      case cmd_msg_t::PDU:
+        process_pdu(msg.lcid, msg.pdu);
+        break;
       case cmd_msg_t::PCCH:
         process_pcch(msg.pdu);
         break;
+      case cmd_msg_t::STOP:
+        return;
     }
   }
 }
@@ -726,10 +729,10 @@ uint32_t rrc::sib_start_tti(uint32_t tti, uint32_t period, uint32_t offset, uint
  */
 bool rrc::si_acquire(uint32_t sib_index)
 {
-  uint32_t tti;
+  uint32_t tti = 0;
   uint32_t si_win_start=0, si_win_len=0;
-  uint16_t period;
-  uint32_t sched_index;
+  uint16_t period = 0;
+  uint32_t sched_index = 0;
   uint32_t x, sf, offset;
 
   uint32_t last_win_start = 0;
@@ -1395,7 +1398,7 @@ void rrc::send_con_setup_complete(byte_buffer_t *nas_msg) {
 void rrc::send_ul_info_transfer(byte_buffer_t *nas_msg) {
   bzero(&ul_dcch_msg, sizeof(LIBLTE_RRC_UL_DCCH_MSG_STRUCT));
 
-  rrc_log->debug("Preparing RX Info Transfer\n");
+  rrc_log->debug("Preparing UL Info Transfer\n");
 
   // Prepare RX INFO packet
   ul_dcch_msg.msg_type = LIBLTE_RRC_UL_DCCH_MSG_TYPE_UL_INFO_TRANSFER;
@@ -1579,7 +1582,7 @@ bool rrc::con_reconfig(LIBLTE_RRC_CONNECTION_RECONFIGURATION_STRUCT *reconfig) {
 
   byte_buffer_t *nas_sdu;
   for (uint32_t i = 0; i < reconfig->N_ded_info_nas; i++) {
-    nas_sdu = pool_allocate;
+    nas_sdu = pool_allocate_blocking;
     if (nas_sdu) {
       memcpy(nas_sdu->msg, &reconfig->ded_info_nas_list[i].msg, reconfig->ded_info_nas_list[i].N_bytes);
       nas_sdu->N_bytes = reconfig->ded_info_nas_list[i].N_bytes;
@@ -1884,7 +1887,7 @@ byte_buffer_t* rrc::byte_align_and_pack()
   }
 
   // Reset and reuse sdu buffer if provided
-  byte_buffer_t *pdcp_buf = pool_allocate;
+  byte_buffer_t *pdcp_buf = pool_allocate_blocking;
   if (pdcp_buf) {
     srslte_bit_pack_vector(bit_buf.msg, pdcp_buf->msg, bit_buf.N_bits);
     pdcp_buf->N_bytes = bit_buf.N_bits / 8;
@@ -1939,6 +1942,35 @@ void rrc::write_sdu(uint32_t lcid, byte_buffer_t *sdu) {
 void rrc::write_pdu(uint32_t lcid, byte_buffer_t *pdu) {
   rrc_log->info_hex(pdu->msg, pdu->N_bytes, "RX %s PDU", get_rb_name(lcid).c_str());
 
+  // If the message contains a ConnectionSetup, acknowledge the transmission to avoid blocking of paging procedure
+  if (lcid == 0) {
+    // FIXME: We unpack and process this message twice to check if it's ConnectionSetup
+    srslte_bit_unpack_vector(pdu->msg, bit_buf.msg, pdu->N_bytes * 8);
+    bit_buf.N_bits = pdu->N_bytes * 8;
+    bzero(&dl_ccch_msg, sizeof(LIBLTE_RRC_DL_CCCH_MSG_STRUCT));
+    liblte_rrc_unpack_dl_ccch_msg((LIBLTE_BIT_MSG_STRUCT *) &bit_buf, &dl_ccch_msg);
+    if (dl_ccch_msg.msg_type == LIBLTE_RRC_DL_CCCH_MSG_TYPE_RRC_CON_SETUP) {
+      // Must enter CONNECT before stopping T300
+      state = RRC_STATE_CONNECTED;
+
+      mac_timers->timer_get(t300)->stop();
+      mac_timers->timer_get(t302)->stop();
+      rrc_log->console("RRC Connected\n");
+
+    }
+  }
+
+  // add PDU to command queue
+  cmd_msg_t msg;
+  msg.pdu = pdu;
+  msg.command = cmd_msg_t::PDU;
+  msg.lcid = lcid;
+  cmd_q.push(msg);
+
+}
+
+void rrc::process_pdu(uint32_t lcid, byte_buffer_t *pdu)
+{
   switch (lcid) {
     case RB_ID_SRB0:
       parse_dl_ccch(pdu);
@@ -2008,6 +2040,7 @@ void rrc::parse_dl_ccch(byte_buffer_t *pdu) {
 void rrc::parse_dl_dcch(uint32_t lcid, byte_buffer_t *pdu) {
   srslte_bit_unpack_vector(pdu->msg, bit_buf.msg, pdu->N_bytes * 8);
   bit_buf.N_bits = pdu->N_bytes * 8;
+  bzero(&dl_dcch_msg, sizeof(dl_dcch_msg));
   liblte_rrc_unpack_dl_dcch_msg((LIBLTE_BIT_MSG_STRUCT *) &bit_buf, &dl_dcch_msg);
 
   rrc_log->info("%s - Received %s\n",
@@ -2018,7 +2051,7 @@ void rrc::parse_dl_dcch(uint32_t lcid, byte_buffer_t *pdu) {
 
   switch (dl_dcch_msg.msg_type) {
     case LIBLTE_RRC_DL_DCCH_MSG_TYPE_DL_INFO_TRANSFER:
-      pdu = pool_allocate;
+      pdu = pool_allocate_blocking;
       if (!pdu) {
         rrc_log->error("Fatal error: out of buffers in pool\n");
         return;
@@ -2547,12 +2580,6 @@ void rrc::handle_con_setup(LIBLTE_RRC_CONNECTION_SETUP_STRUCT *setup) {
   // Apply the Radio Resource configuration
   apply_rr_config_dedicated(&setup->rr_cnfg);
 
-  // Must enter CONNECT before stopping T300
-  state = RRC_STATE_CONNECTED;
-
-  rrc_log->console("RRC Connected\n");
-  mac_timers->timer_get(t300)->stop();
-  mac_timers->timer_get(t302)->stop();
   nas->set_barring(nas_interface_rrc::BARRING_NONE);
 
   if (dedicatedInfoNAS) {
@@ -2686,8 +2713,16 @@ void rrc::add_drb(LIBLTE_RRC_DRB_TO_ADD_MOD_STRUCT *drb_cnfg) {
   rrc_log->info("Added radio bearer %s\n", get_rb_name(lcid).c_str());
 }
 
-void rrc::release_drb(uint8_t lcid) {
-  // TODO
+void rrc::release_drb(uint32_t drb_id)
+{
+  uint32_t lcid = RB_ID_SRB2 + drb_id;
+
+  if (drbs.find(drb_id) != drbs.end()) {
+    rrc_log->info("Releasing radio bearer %s\n", get_rb_name(lcid).c_str());
+    drbs.erase(lcid);
+  } else {
+    rrc_log->error("Couldn't release radio bearer %s. Doesn't exist.\n", get_rb_name(lcid).c_str());
+  }
 }
 
 void rrc::add_mrb(uint32_t lcid, uint32_t port)
@@ -2833,9 +2868,9 @@ void rrc::rrc_meas::new_phy_meas(uint32_t earfcn, uint32_t pci, float rsrp, floa
         if (objects[m->object_id].earfcn == earfcn) {
           // If it's a newly discovered cell, add it to objects
           if (!m->cell_values.count(pci)) {
-            uint32_t cell_idx = objects[m->object_id].cells.size();
-            objects[m->object_id].cells[cell_idx].pci      = pci;
-            objects[m->object_id].cells[cell_idx].q_offset = 0;
+            uint32_t cell_idx = objects[m->object_id].found_cells.size();
+            objects[m->object_id].found_cells[cell_idx].pci      = pci;
+            objects[m->object_id].found_cells[cell_idx].q_offset = 0;
           }
           // Update or add cell
           L3_filter(&m->cell_values[pci], values);
@@ -2873,7 +2908,7 @@ bool rrc::rrc_meas::find_earfcn_cell(uint32_t earfcn, uint32_t pci, meas_obj_t *
       if (object) {
         *object = &obj->second;
       }
-      for (std::map<uint32_t, meas_cell_t>::iterator c = obj->second.cells.begin(); c != obj->second.cells.end(); ++c) {
+      for (std::map<uint32_t, meas_cell_t>::iterator c = obj->second.found_cells.begin(); c != obj->second.found_cells.end(); ++c) {
         if (c->second.pci == pci) {
           if (cell_idx) {
             *cell_idx = c->first;
@@ -2999,7 +3034,7 @@ void rrc::rrc_meas::calculate_triggers(uint32_t tti)
     if (find_earfcn_cell(phy->get_current_earfcn(), phy->get_current_pci(), &serving_object, &serving_cell_idx)) {
       Ofp = serving_object->q_offset;
       if (serving_cell_idx >= 0) {
-        Ocp = serving_object->cells[serving_cell_idx].q_offset;
+        Ocp = serving_object->found_cells[serving_cell_idx].q_offset;
       }
     } else {
       log_h->warning("Can't find current eafcn=%d, pci=%d in objects list. Using Ofp=0, Ocp=0\n",
@@ -3044,7 +3079,7 @@ void rrc::rrc_meas::calculate_triggers(uint32_t tti)
       // Rest are evaluated for every cell in frequency
       } else {
         meas_obj_t *obj = &objects[m->second.object_id];
-        for (std::map<uint32_t, meas_cell_t>::iterator cell = obj->cells.begin(); cell != obj->cells.end(); ++cell) {
+        for (std::map<uint32_t, meas_cell_t>::iterator cell = obj->found_cells.begin(); cell != obj->found_cells.end(); ++cell) {
           if (m->second.cell_values.count(cell->second.pci)) {
             float Ofn = obj->q_offset;
             float Ocn = cell->second.q_offset;
@@ -3201,18 +3236,18 @@ bool rrc::rrc_meas::parse_meas_config(LIBLTE_RRC_MEAS_CONFIG_STRUCT *cfg)
 
         if (src_obj->black_cells_to_remove_list_present) {
           for (uint32_t j=0;j<src_obj->black_cells_to_remove_list.N_cell_idx;j++) {
-            dst_obj->cells.erase(src_obj->black_cells_to_remove_list.cell_idx[j]);
+            dst_obj->meas_cells.erase(src_obj->black_cells_to_remove_list.cell_idx[j]);
           }
         }
 
         for (uint32_t j=0;j<src_obj->N_cells_to_add_mod;j++) {
-          dst_obj->cells[src_obj->cells_to_add_mod_list[j].cell_idx].q_offset = liblte_rrc_q_offset_range_num[src_obj->cells_to_add_mod_list[j].cell_offset];
-          dst_obj->cells[src_obj->cells_to_add_mod_list[j].cell_idx].pci      = src_obj->cells_to_add_mod_list[j].pci;
+          dst_obj->meas_cells[src_obj->cells_to_add_mod_list[j].cell_idx].q_offset = liblte_rrc_q_offset_range_num[src_obj->cells_to_add_mod_list[j].cell_offset];
+          dst_obj->meas_cells[src_obj->cells_to_add_mod_list[j].cell_idx].pci      = src_obj->cells_to_add_mod_list[j].pci;
 
           log_h->info("MEAS: Added measObjectId=%d, earfcn=%d, q_offset=%f, pci=%d, offset_cell=%f\n",
                       cfg->meas_obj_to_add_mod_list.meas_obj_list[i].meas_obj_id, dst_obj->earfcn, dst_obj->q_offset,
-                      dst_obj->cells[src_obj->cells_to_add_mod_list[j].cell_idx].pci,
-                      dst_obj->cells[src_obj->cells_to_add_mod_list[j].cell_idx].q_offset);
+                      dst_obj->meas_cells[src_obj->cells_to_add_mod_list[j].cell_idx].pci,
+                      dst_obj->meas_cells[src_obj->cells_to_add_mod_list[j].cell_idx].q_offset);
 
         }
 
@@ -3335,12 +3370,11 @@ bool rrc::rrc_meas::parse_meas_config(LIBLTE_RRC_MEAS_CONFIG_STRUCT *cfg)
 void rrc::rrc_meas::update_phy()
 {
   phy->meas_reset();
-  for(std::map<uint32_t, meas_t>::iterator iter=active.begin(); iter!=active.end(); ++iter) {
-    meas_t m = iter->second;
-    meas_obj_t o = objects[m.object_id];
+  for(std::map<uint32_t, meas_obj_t>::iterator iter=objects.begin(); iter!=objects.end(); ++iter) {
+    meas_obj_t o = iter->second;
     // Instruct PHY to look for neighbour cells on this frequency
     phy->meas_start(o.earfcn);
-    for(std::map<uint32_t, meas_cell_t>::iterator iter=o.cells.begin(); iter!=o.cells.end(); ++iter) {
+    for(std::map<uint32_t, meas_cell_t>::iterator iter=o.meas_cells.begin(); iter!=o.meas_cells.end(); ++iter) {
       // Instruct PHY to look for cells IDs on this frequency
       phy->meas_start(o.earfcn, iter->second.pci);
     }

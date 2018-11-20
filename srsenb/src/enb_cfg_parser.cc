@@ -201,7 +201,7 @@ int enb::parse_sib1(std::string filename, LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_1_STRUC
   return parser::parse_section(filename, &sib1);
 }
 
-int enb::parse_sib2(std::string filename, LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUCT *data) 
+int enb::parse_sib2(std::string filename, LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUCT *data, bool *mbsfn_section_present)
 {  
   parser::section sib2("sib2");
 
@@ -210,38 +210,33 @@ int enb::parse_sib2(std::string filename, LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUC
     ("time_alignment_timer", &data->time_alignment_timer, 
      liblte_rrc_time_alignment_timer_text, LIBLTE_RRC_TIME_ALIGNMENT_TIMER_N_ITEMS)
   );
-  
-  
-  sib2.add_field(
-     new parser::field<uint32>
-    ("mbsfnSubframeConfigListLength", &data->mbsfn_subfr_cnfg_list_size)
-  );
-  
-  
-    parser::section mbsfnSubframeConfigList("mbsfnSubframeConfigList");
+
+  parser::section mbsfnSubframeConfigList("mbsfnSubframeConfigList");
       sib2.add_subsection(&mbsfnSubframeConfigList);
-      
-    mbsfnSubframeConfigList.add_field( 
-       new parser::field<uint32>
-      ("subframeAllocation", &data->mbsfn_subfr_cnfg_list[0].subfr_alloc)
-    );
 
-    mbsfnSubframeConfigList.add_field( 
-       new parser::field<uint8>
-      ("radioframeAllocationOffset", &data->mbsfn_subfr_cnfg_list[0].radio_fr_alloc_offset)
-    );
+  mbsfnSubframeConfigList.set_optional(mbsfn_section_present);
 
-    mbsfnSubframeConfigList.add_field( 
-       new parser::field_enum_str<LIBLTE_RRC_SUBFRAME_ALLOCATION_NUM_FRAMES_ENUM>
-      ("subframeAllocationNumFrames", &data->mbsfn_subfr_cnfg_list[0].subfr_alloc_num_frames,
-       liblte_rrc_subframe_allocation_num_frames_text,LIBLTE_RRC_SUBFRAME_ALLOCATION_NUM_FRAMES_N_ITEMS)
-    );
+  mbsfnSubframeConfigList.add_field(
+     new parser::field<uint32>
+    ("subframeAllocation", &data->mbsfn_subfr_cnfg_list[0].subfr_alloc)
+  );
 
-    mbsfnSubframeConfigList.add_field( 
-       new parser::field_enum_str<LIBLTE_RRC_RADIO_FRAME_ALLOCATION_PERIOD_ENUM>
-      ("radioframeAllocationPeriod", &data->mbsfn_subfr_cnfg_list[0].radio_fr_alloc_period,
-       liblte_rrc_radio_frame_allocation_period_text, LIBLTE_RRC_RADIO_FRAME_ALLOCATION_PERIOD_N_ITEMS)
-    );
+  mbsfnSubframeConfigList.add_field(
+     new parser::field<uint8>
+    ("radioframeAllocationOffset", &data->mbsfn_subfr_cnfg_list[0].radio_fr_alloc_offset)
+  );
+
+  mbsfnSubframeConfigList.add_field(
+     new parser::field_enum_str<LIBLTE_RRC_SUBFRAME_ALLOCATION_NUM_FRAMES_ENUM>
+    ("subframeAllocationNumFrames", &data->mbsfn_subfr_cnfg_list[0].subfr_alloc_num_frames,
+     liblte_rrc_subframe_allocation_num_frames_text,LIBLTE_RRC_SUBFRAME_ALLOCATION_NUM_FRAMES_N_ITEMS)
+  );
+
+  mbsfnSubframeConfigList.add_field(
+     new parser::field_enum_str<LIBLTE_RRC_RADIO_FRAME_ALLOCATION_PERIOD_ENUM>
+    ("radioframeAllocationPeriod", &data->mbsfn_subfr_cnfg_list[0].radio_fr_alloc_period,
+     liblte_rrc_radio_frame_allocation_period_text, LIBLTE_RRC_RADIO_FRAME_ALLOCATION_PERIOD_N_ITEMS)
+  );
  
   parser::section freqinfo("freqInfo");
   sib2.add_subsection(&freqinfo);
@@ -876,11 +871,12 @@ int enb::parse_sibs(all_args_t *args, rrc_cfg_t *rrc_cfg, phy_cfg_t *phy_config_
    
   // Generate SIB2
   bzero(sib2, sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_2_STRUCT));
-  if (parse_sib2(args->enb_files.sib_config, sib2)) {
+  bool mbsfn_section_present = false;
+  if (parse_sib2(args->enb_files.sib_config, sib2, &mbsfn_section_present)) {
     return -1; 
   }
  
-  // SRS not yet supported 
+  // SRS not yet supported
   sib2->rr_config_common_sib.srs_ul_cnfg.present = false; 
   if (sib2->ul_bw.present) {
     switch(args->enb.n_prb) {
@@ -907,8 +903,13 @@ int enb::parse_sibs(all_args_t *args, rrc_cfg_t *rrc_cfg, phy_cfg_t *phy_config_
   if (sib2->arfcn_value_eutra.present) {
     sib2->arfcn_value_eutra.value = args->rf.ul_earfcn;
   }
-  
-  // Generate SIB3 if defined in mapping info 
+
+  // Update MBSFN list counter. Only 1 supported
+  if (mbsfn_section_present && args->expert.enable_mbsfn) {
+    sib2->mbsfn_subfr_cnfg_list_size = 1;
+  }
+
+  // Generate SIB3 if defined in mapping info
   if (sib_is_present(sib1->sched_info, sib1->N_sched_info, LIBLTE_RRC_SIB_TYPE_3)) {
     bzero(sib3, sizeof(LIBLTE_RRC_SYS_INFO_BLOCK_TYPE_3_STRUCT));
     if (parse_sib3(args->enb_files.sib_config, sib3)) {

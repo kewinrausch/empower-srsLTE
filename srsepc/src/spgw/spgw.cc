@@ -157,7 +157,6 @@ spgw::stop()
 srslte::error_t
 spgw::init_sgi_if(spgw_args_t *args)
 {
-  char dev[IFNAMSIZ] = "srs_spgw_sgi";
   struct ifreq ifr;
 
   if(m_sgi_up)
@@ -177,7 +176,7 @@ spgw::init_sgi_if(spgw_args_t *args)
 
   memset(&ifr, 0, sizeof(ifr));
   ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-  strncpy(ifr.ifr_ifrn.ifrn_name, dev, IFNAMSIZ-1);
+  strncpy(ifr.ifr_ifrn.ifrn_name, args->sgi_if_name.c_str(), std::min(args->sgi_if_name.length(), (size_t)(IFNAMSIZ-1)));
   ifr.ifr_ifrn.ifrn_name[IFNAMSIZ-1]='\0';
 
   if(ioctl(m_sgi_if, TUNSETIFF, &ifr) < 0)
@@ -330,28 +329,24 @@ spgw::handle_sgi_pdu(srslte::byte_buffer_t *msg)
   srslte::gtpc_f_teid_ie enb_fteid;
 
   struct iphdr *iph = (struct iphdr *) msg->msg;
-  if(iph->version != 4)
-  {
+  if (iph->version != 4) {
     m_spgw_log->warning("IPv6 not supported yet.\n");
     return;
   }
-  if(iph->tot_len < 20)
-  {
+  if (iph->tot_len < 20) {
     m_spgw_log->warning("Invalid IP header length.\n");
     return;
   }
 
   pthread_mutex_lock(&m_mutex);
   gtp_fteid_it = m_ip_to_teid.find(iph->daddr);
-  if(gtp_fteid_it != m_ip_to_teid.end())
-  {
+  if (gtp_fteid_it != m_ip_to_teid.end()) {
     ip_found = true;
     enb_fteid = gtp_fteid_it->second;
   }
   pthread_mutex_unlock(&m_mutex);
 
-  if(ip_found == false)
-  {
+  if (ip_found == false) {
     //m_spgw_log->console("IP Packet is not for any UE\n");
     return;
   }
@@ -363,14 +358,13 @@ spgw::handle_sgi_pdu(srslte::byte_buffer_t *msg)
 
   //Setup GTP-U header
   srslte::gtpu_header_t header;
-  header.flags        = 0x30;
-  header.message_type = 0xFF;
+  header.flags        = GTPU_FLAGS_VERSION_V1 | GTPU_FLAGS_GTP_PROTOCOL;
+  header.message_type = GTPU_MSG_DATA_PDU;
   header.length       = msg->N_bytes;
   header.teid         = enb_fteid.teid;
 
   //Write header into packet
-  if(!srslte::gtpu_write_header(&header, msg, m_spgw_log))
-  {
+  if (!srslte::gtpu_write_header(&header, msg, m_spgw_log)) {
     m_spgw_log->console("Error writing GTP-U header on PDU\n");
   }
 

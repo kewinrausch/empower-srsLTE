@@ -33,17 +33,6 @@
 #ifndef SRSLTE_RADIO_H
 #define SRSLTE_RADIO_H
 
-typedef struct {
-  float tx_corr_dc_gain;
-  float tx_corr_dc_phase;
-  float tx_corr_iq_i;
-  float tx_corr_iq_q;
-  float rx_corr_dc_gain;
-  float rx_corr_dc_phase;
-  float rx_corr_iq_i;
-  float rx_corr_iq_q;
-} rf_cal_t;
-
 namespace srslte {
 
 /* Interface to the RF frontend. 
@@ -84,8 +73,6 @@ class radio {
   void set_burst_preamble(double preamble_us);
   void set_tx_adv(int nsamples);
   void set_tx_adv_neg(bool tx_adv_is_neg);
-
-  void set_manual_calibration(rf_cal_t *calibration);
 
   bool is_continuous_tx();
   void set_continuous_tx(bool enable);
@@ -140,7 +127,7 @@ class radio {
 
   srslte_rf_t rf_device;
 
-  const static uint32_t burst_preamble_max_samples = 30720000;  // 30.72 MHz is maximum frequency
+  const static uint32_t burst_preamble_max_samples = 13824;
   double burst_preamble_sec;// Start of burst preamble time (off->on RF transition time)
   srslte_timestamp_t end_of_burst_time;
   bool is_start_of_burst;

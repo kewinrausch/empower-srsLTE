@@ -154,6 +154,7 @@ private:
   agent_interface_mac *agent;
 
   pthread_rwlock_t rwlock;
+  pthread_mutex_t sched_mutex;
 
   cell_cfg_t cfg;
   sched_args_t sched_cfg; 

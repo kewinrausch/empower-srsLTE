@@ -83,7 +83,6 @@ public:
   void    force_freq(float dl_freq, float ul_freq);
 
   // Other functions
-  const static int MUTEX_X_WORKER = 4;
   double set_rx_gain(double gain);
   int radio_recv_fnc(cf_t *data[SRSLTE_MAX_PORTS], uint32_t nsamples, srslte_timestamp_t *rx_time);
   int scell_recv_fnc(cf_t *data[SRSLTE_MAX_PORTS], uint32_t nsamples, srslte_timestamp_t *rx_time);
@@ -309,6 +308,10 @@ private:
     state_t run_state() {
       pthread_mutex_lock(&inside);
       cur_state = next_state;
+      if (state_setting) {
+        state_setting  = false;
+        state_changing = true;
+      }
       pthread_cond_broadcast(&cvar);
       pthread_mutex_unlock(&inside);
       return cur_state;
@@ -322,6 +325,8 @@ private:
       } else {
         next_state = IDLE;
       }
+      state_changing = false;
+      pthread_cond_broadcast(&cvar);
       pthread_mutex_unlock(&inside);
     }
     void force_sfn_sync() {
@@ -383,13 +388,16 @@ private:
       pthread_cond_init(&cvar, NULL);
       cur_state = IDLE;
       next_state = IDLE;
+      state_setting = false;
+      state_changing = false;
     }
    private:
 
     void go_state(state_t s) {
       pthread_mutex_lock(&inside);
       next_state = s;
-      while(cur_state != s) {
+      state_setting = true;
+      while(state_setting) {
         pthread_cond_wait(&cvar, &inside);
       }
       pthread_mutex_unlock(&inside);
@@ -398,12 +406,13 @@ private:
     /* Waits until there is a call to set_state() and then run_state(). Returns when run_state() returns */
     void wait_state_change(state_t prev_state) {
       pthread_mutex_lock(&inside);
-      while(cur_state == prev_state) {
+      while(state_changing) {
         pthread_cond_wait(&cvar, &inside);
       }
       pthread_mutex_unlock(&inside);
     }
 
+    bool state_changing, state_setting; 
     state_t cur_state, next_state;
     pthread_mutex_t inside, outside;
     pthread_cond_t  cvar;
@@ -428,9 +437,9 @@ private:
   float         time_adv_sec, next_time_adv_sec;
   uint32_t      tti;
   bool          do_agc;
-  
-  uint32_t      nof_tx_mutex;
-  uint32_t      tx_mutex_cnt;
+
+  uint32_t      tx_worker_cnt;
+  uint32_t      nof_workers;
 
   float         ul_dl_factor;
   int           current_earfcn;

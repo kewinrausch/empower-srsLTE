@@ -45,6 +45,7 @@ gw::gw()
 {
   current_ip_addr = 0;
   default_netmask = true;
+  tundevname = "";
 }
 
 void gw::init(pdcp_interface_gw *pdcp_, nas_interface_gw *nas_, srslte::log *gw_log_, srslte::srslte_gw_config_t cfg_)
@@ -123,6 +124,11 @@ void gw::set_netmask(std::string netmask)
 {
   default_netmask = false;
   this->netmask = netmask;
+}
+
+void gw::set_tundevname(const std::string & devname)
+{
+  tundevname = devname;
 }
 
 
@@ -242,8 +248,6 @@ srslte::error_t gw::init_if(char *err_str)
     return(srslte::ERROR_ALREADY_STARTED);
   }
 
-  char dev[IFNAMSIZ] = "tun_srsue";
-
   // Construct the TUN device
   tun_fd = open("/dev/net/tun", O_RDWR);
   gw_log->info("TUN file descriptor = %d\n", tun_fd);
@@ -255,7 +259,7 @@ srslte::error_t gw::init_if(char *err_str)
   }
   memset(&ifr, 0, sizeof(ifr));
   ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-  strncpy(ifr.ifr_ifrn.ifrn_name, dev, IFNAMSIZ-1);
+  strncpy(ifr.ifr_ifrn.ifrn_name, tundevname.c_str(), std::min(tundevname.length(), (size_t)(IFNAMSIZ-1)));
   ifr.ifr_ifrn.ifrn_name[IFNAMSIZ-1] = 0;
   if(0 > ioctl(tun_fd, TUNSETIFF, &ifr))
   {
@@ -309,7 +313,7 @@ void gw::run_thread()
   struct iphdr   *ip_pkt;
   uint32          idx = 0;
   int32           N_bytes;
-  srslte::byte_buffer_t *pdu = pool_allocate;
+  srslte::byte_buffer_t *pdu = pool_allocate_blocking;
   if (!pdu) {
     gw_log->error("Fatal Error: Couldn't allocate PDU in run_thread().\n");
     return;
@@ -343,7 +347,7 @@ void gw::run_thread()
         {
           gw_log->info_hex(pdu->msg, pdu->N_bytes, "TX PDU");
 
-          while(run_enable && !pdcp->is_drb_enabled(cfg.lcid) && attach_wait < ATTACH_WAIT_TOUT) {
+          while(run_enable && !pdcp->is_lcid_enabled(cfg.lcid) && attach_wait < ATTACH_WAIT_TOUT) {
             if (!attach_wait) {
               gw_log->info("LCID=%d not active, requesting NAS attach (%d/%d)\n", cfg.lcid, attach_wait, ATTACH_WAIT_TOUT);
               if (!nas->attach_request()) {
@@ -361,11 +365,10 @@ void gw::run_thread()
           }
 
           // Send PDU directly to PDCP
-          if (pdcp->is_drb_enabled(cfg.lcid)) {
+          if (pdcp->is_lcid_enabled(cfg.lcid)) {
             pdu->set_timestamp();
             ul_tput_bytes += pdu->N_bytes;
-            pdcp->write_sdu(cfg.lcid, pdu);
-
+            pdcp->write_sdu(cfg.lcid, pdu, false);
             do {
               pdu = pool_allocate;
               if (!pdu) {

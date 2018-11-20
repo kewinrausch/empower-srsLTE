@@ -444,6 +444,7 @@ int srslte_pusch_set_rnti(srslte_pusch_t *q, uint16_t rnti) {
         return -1;
       }
     }
+    q->users[rnti_idx]->sequence_generated = false;
     for (i = 0; i < SRSLTE_NSUBFRAMES_X_FRAME; i++) {
       if (srslte_sequence_pusch(&q->users[rnti_idx]->seq[i], rnti, 2 * i, q->cell.id,
                                 q->max_re * srslte_mod_bits_x_symbol(SRSLTE_MOD_64QAM)))
@@ -480,16 +481,24 @@ static srslte_sequence_t *get_user_sequence(srslte_pusch_t *q, uint16_t rnti, ui
 {
   uint32_t rnti_idx = q->is_ue?0:rnti;
 
-  // The scrambling sequence is pregenerated for all RNTIs in the eNodeB but only for C-RNTI in the UE
-  if (q->users[rnti_idx] && q->users[rnti_idx]->sequence_generated &&
-      q->users[rnti_idx]->cell_id == q->cell.id                    &&
-      q->ue_rnti == rnti                                           &&
-      ((rnti >= SRSLTE_CRNTI_START && rnti < SRSLTE_CRNTI_END) || !q->is_ue))
-  {
-    return &q->users[rnti_idx]->seq[sf_idx];
+  if (rnti >= SRSLTE_CRNTI_START && rnti < SRSLTE_CRNTI_END) {
+    // The scrambling sequence is pregenerated for all RNTIs in the eNodeB but only for C-RNTI in the UE
+    if (q->users[rnti_idx]                          &&
+        q->users[rnti_idx]->sequence_generated      &&
+        q->users[rnti_idx]->cell_id == q->cell.id   &&
+        (!q->is_ue || q->ue_rnti == rnti))
+    {
+      return &q->users[rnti_idx]->seq[sf_idx];
+    } else {
+      if (srslte_sequence_pusch(&q->tmp_seq, rnti, 2 * sf_idx, q->cell.id, len)) {
+        fprintf(stderr, "Error generating temporal scrambling sequence\n");
+        return NULL;
+      }
+      return &q->tmp_seq;
+    }
   } else {
-    srslte_sequence_pusch(&q->tmp_seq, rnti, 2 * sf_idx, q->cell.id, len);
-    return &q->tmp_seq;
+    fprintf(stderr, "Invalid RNTI=0x%x\n", rnti);
+    return NULL;
   }
 }
 
@@ -515,7 +524,6 @@ int srslte_pusch_encode(srslte_pusch_t *q, srslte_pusch_cfg_t *cfg, srslte_softb
          cfg->sf_idx, srslte_mod_string(cfg->grant.mcs.mod), rnti, 
          cfg->grant.mcs.tbs, cfg->nbits.nof_re, cfg->nbits.nof_symb, cfg->nbits.nof_bits, cfg->rv);
     
-    bzero(q->q, cfg->nbits.nof_bits);
     if (srslte_ulsch_uci_encode(&q->ul_sch, cfg, softbuffer, data, uci_data, q->g, q->q)) {
       fprintf(stderr, "Error encoding TB\n");
       return SRSLTE_ERROR;
@@ -525,6 +533,10 @@ int srslte_pusch_encode(srslte_pusch_t *q, srslte_pusch_cfg_t *cfg, srslte_softb
     srslte_sequence_t *seq = get_user_sequence(q, rnti, cfg->sf_idx, cfg->nbits.nof_bits);
 
     // Run scrambling
+    if (!seq) {
+      fprintf(stderr, "Error getting scrambling sequence\n");
+      return SRSLTE_ERROR;
+    }
     srslte_scrambling_bytes(seq, (uint8_t*) q->q, cfg->nbits.nof_bits);
 
     // Correct UCI placeholder/repetition bits
@@ -602,7 +614,11 @@ int srslte_pusch_decode(srslte_pusch_t *q,
     srslte_dft_precoding(&q->dft_precoding, q->z, q->d, cfg->grant.L_prb, cfg->nbits.nof_symb);
     
     // Soft demodulation
-    srslte_demod_soft_demodulate_s(cfg->grant.mcs.mod, q->d, q->q, cfg->nbits.nof_re);
+    if (q->llr_is_8bit) {
+      srslte_demod_soft_demodulate_b(cfg->grant.mcs.mod, q->d, q->q, cfg->nbits.nof_re);
+    } else {
+      srslte_demod_soft_demodulate_s(cfg->grant.mcs.mod, q->d, q->q, cfg->nbits.nof_re);
+    }
 
     // Generate scrambling sequence if not pre-generated
     srslte_sequence_t *seq = get_user_sequence(q, rnti, cfg->sf_idx, cfg->nbits.nof_bits);
@@ -631,7 +647,11 @@ int srslte_pusch_decode(srslte_pusch_t *q,
     }
     
     // Descrambling
-    srslte_scrambling_s_offset(seq, q->q, 0, cfg->nbits.nof_bits);
+    if (q->llr_is_8bit) {
+      srslte_scrambling_sb_offset(seq, q->q, 0, cfg->nbits.nof_bits);
+    } else {
+      srslte_scrambling_s_offset(seq, q->q, 0, cfg->nbits.nof_bits);
+    }
 
     // Decode
     ret = srslte_ulsch_uci_decode(&q->ul_sch, cfg, softbuffer, q->q, q->g, data, uci_data);

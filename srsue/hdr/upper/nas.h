@@ -90,7 +90,7 @@ public:
 
   // UE interface
   bool attach_request();
-  bool deattach_request();
+  bool detach_request();
 
   // PCAP
   void start_pcap(srslte::nas_pcap *pcap_);
@@ -130,6 +130,7 @@ private:
   bool have_guti;
   bool have_ctxt;
   nas_sec_ctxt ctxt;
+  bool auth_request;
 
   uint32_t ip_addr;
   uint8_t eps_bearer_id;
@@ -166,26 +167,29 @@ private:
   // Parsers
   void parse_attach_accept(uint32_t lcid, byte_buffer_t *pdu);
   void parse_attach_reject(uint32_t lcid, byte_buffer_t *pdu);
-  void parse_authentication_request(uint32_t lcid, byte_buffer_t *pdu);
+  void parse_authentication_request(uint32_t lcid, byte_buffer_t *pdu, const uint8_t sec_hdr_type);
   void parse_authentication_reject(uint32_t lcid, byte_buffer_t *pdu);
   void parse_identity_request(uint32_t lcid, byte_buffer_t *pdu);
   void parse_security_mode_command(uint32_t lcid, byte_buffer_t *pdu);
   void parse_service_reject(uint32_t lcid, byte_buffer_t *pdu);
   void parse_esm_information_request(uint32_t lcid, byte_buffer_t *pdu);
   void parse_emm_information(uint32_t lcid, byte_buffer_t *pdu);
+  void parse_detach_request(uint32_t lcid, byte_buffer_t *pdu);
 
   // Packet generators
   void gen_attach_request(byte_buffer_t *msg);
   void gen_service_request(byte_buffer_t *msg);
 
   // Senders
-  void send_identity_response();
+  void send_identity_response(uint32_t lcid, uint8 id_type);
   void send_service_request();
   void send_esm_information_response(const uint8 proc_transaction_id);
-  void send_authentication_response(const uint8_t* res, const size_t res_len);
+  void send_authentication_response(const uint8_t* res, const size_t res_len, const uint8_t sec_hdr_type);
   void send_authentication_failure(const uint8_t cause, const uint8_t* auth_fail_param);
   void gen_pdn_connectivity_request(LIBLTE_BYTE_MSG_STRUCT *msg);
   void send_security_mode_reject(uint8_t cause);
+  void send_detach_request(bool switch_off);
+  void send_detach_accept();
 
   // security context persistence file
   bool read_ctxt_file(nas_sec_ctxt *ctxt);
