@@ -941,10 +941,10 @@ rrc::ue::ue()
   cqi_idx           = 0;
   cqi_sched_sf_idx  = 0;
   cqi_sched_prb_idx = 0;
-  rlf_cnt           = 0;
-  nas_pending       = false;
-  state             = RRC_STATE_IDLE;
-  pool              = srslte::byte_buffer_pool::get_instance();
+  rlf_cnt          = 0;
+  mask_id_resp     = 0;
+  state            = RRC_STATE_IDLE;
+  pool             = srslte::byte_buffer_pool::get_instance();
 }
 
 rrc_state_t rrc::ue::get_state()
@@ -1050,11 +1050,15 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
   switch(ul_dcch_msg.msg_type) {
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_SETUP_COMPLETE:
       handle_rrc_con_setup_complete(&ul_dcch_msg.msg.rrc_con_setup_complete, pdu);
+#if 0
+      send_identity_request();
+#endif
       break;      
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_UL_INFO_TRANSFER:
-      memcpy(pdu->msg, ul_dcch_msg.msg.ul_info_transfer.dedicated_info.msg, ul_dcch_msg.msg.ul_info_transfer.dedicated_info.N_bytes);
-      pdu->N_bytes = ul_dcch_msg.msg.ul_info_transfer.dedicated_info.N_bytes;
-      parent->s1ap->write_pdu(rnti, pdu);
+      handle_rrc_ul_info_transfer(&ul_dcch_msg.msg.ul_info_transfer, pdu);
+      //memcpy(pdu->msg, ul_dcch_msg.msg.ul_info_transfer.dedicated_info.msg, ul_dcch_msg.msg.ul_info_transfer.dedicated_info.N_bytes);
+      //pdu->N_bytes = ul_dcch_msg.msg.ul_info_transfer.dedicated_info.N_bytes;
+      //parent->s1ap->write_pdu(rnti, pdu);
       break;
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_RECONFIG_COMPLETE:
       handle_rrc_reconf_complete(&ul_dcch_msg.msg.rrc_con_reconfig_complete, pdu);
@@ -1121,15 +1125,14 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
 
   memcpy(pdu->msg, msg->dedicated_info_nas.msg, msg->dedicated_info_nas.N_bytes);
   pdu->N_bytes = msg->dedicated_info_nas.N_bytes;
-#if 0
+
   if(liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)pdu, &srm) == LIBLTE_SUCCESS) {
     switch(srm.eps_mobile_id.type_of_id) {
     case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
       tmp = 0;
 
-      for(i = 0; i < 15; i++) {   // 15 is the limit in the liblte_mme protocols
-        tmp |= srm.eps_mobile_id.imsi[i];
-        tmp  = tmp << 4;
+      for(i = 0; i <= 14; i++){
+        tmp += srm.eps_mobile_id.imsi[i] * std::pow(10,14 - i);
       }
 
       // Update the IMSI
@@ -1140,9 +1143,9 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
       // Update the PLMN and the TMSI
       parent->agent->update_user_ID(
         rnti, 
-        (srm.eps_mobile_id.guti.mcc << 12) | srm.eps_mobile_id.guti.mnc, 
-        srm.eps_mobile_id.guti.m_tmsi, 
-        0);
+        0,
+        0, 
+        srm.eps_mobile_id.guti.m_tmsi);
       break;
     case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
       // IMEI not handled right now
@@ -1151,7 +1154,6 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
       break;  
     }
   }
-#endif
 
   // Acknowledge Dedicated Configuration
   parent->phy->set_conf_dedicated_ack(rnti, true);
@@ -1163,6 +1165,51 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
     parent->s1ap->initial_ue(rnti, (LIBLTE_S1AP_RRC_ESTABLISHMENT_CAUSE_ENUM)establishment_cause, pdu);
   }
   state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
+}
+
+void rrc::ue::handle_rrc_ul_info_transfer(LIBLTE_RRC_UL_INFORMATION_TRANSFER_STRUCT * msg, srslte::byte_buffer_t * pdu)
+{
+  uint8_t  pd;
+  uint8_t  msg_type;
+  uint8_t  sec_hdr_type;
+  
+  uint64_t imsi = 0;
+  LIBLTE_MME_ID_RESPONSE_MSG_STRUCT id_resp;
+
+  if(liblte_mme_parse_msg_header((LIBLTE_BYTE_MSG_STRUCT *)&msg->dedicated_info, &pd, &msg_type) != LIBLTE_SUCCESS) {
+    goto send_s1;
+  }
+
+  if(liblte_mme_parse_msg_sec_header((LIBLTE_BYTE_MSG_STRUCT *)&msg->dedicated_info, &pd, &sec_hdr_type) != LIBLTE_SUCCESS) {
+    goto send_s1;
+  }
+
+  // I'm just interested in the identity response from the UE
+  if(sec_hdr_type == LIBLTE_MME_SECURITY_HDR_TYPE_INTEGRITY) {
+    if(msg_type == LIBLTE_MME_MSG_TYPE_IDENTITY_RESPONSE) {
+      if(liblte_mme_unpack_identity_response_msg((LIBLTE_BYTE_MSG_STRUCT *)&msg->dedicated_info, &id_resp) != LIBLTE_SUCCESS) {
+        goto send_s1;
+      }
+      
+      for(int i = 0; i <= 14; i++){
+        imsi += id_resp.mobile_id.imsi[i] * std::pow(10,14 - i);
+      }
+
+      // Update the IMSI
+      parent->agent->update_user_ID(rnti, 0, imsi, 0);
+
+      // Don't forward this message if it has to be masked
+      if(mask_id_resp) {
+        mask_id_resp = 0;
+        return;
+      }
+    }
+  }
+
+send_s1:
+  memcpy(pdu->msg, msg->dedicated_info.msg, msg->dedicated_info.N_bytes);
+  pdu->N_bytes = msg->dedicated_info.N_bytes;
+  parent->s1ap->write_pdu(rnti, pdu);
 }
 
 void rrc::ue::handle_rrc_meas_report(LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * msg)
@@ -1914,6 +1961,31 @@ void rrc::ue::send_connection_reconf_meas(LIBLTE_RRC_MEAS_CONFIG_STRUCT * msg)
 
   parent->rrc_log->info("Sending RRCMeasConfiguration for RNTI:0x%x\n", rnti);
 
+  send_dl_dcch(&dl_dcch_msg);
+
+  return;
+}
+
+void rrc::ue::send_identity_request()
+{
+  LIBLTE_RRC_DL_DCCH_MSG_STRUCT dl_dcch_msg;
+  LIBLTE_MME_ID_REQUEST_MSG_STRUCT id_req;
+
+  bzero(&dl_dcch_msg, sizeof(LIBLTE_RRC_DL_DCCH_MSG_STRUCT));
+  bzero(&id_req, sizeof(LIBLTE_MME_ID_REQUEST_MSG_STRUCT));
+  
+  dl_dcch_msg.msg_type = LIBLTE_RRC_DL_DCCH_MSG_TYPE_DL_INFO_TRANSFER;
+  dl_dcch_msg.msg.dl_info_transfer.dedicated_info_type = LIBLTE_RRC_DL_INFORMATION_TRANSFER_TYPE_NAS;
+  dl_dcch_msg.msg.dl_info_transfer.rrc_transaction_id  = (transaction_id++)%4;
+
+  id_req.id_type = LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI;
+
+  // Pack the message impersonating a request from the Core
+  if(liblte_mme_pack_identity_request_msg(&id_req, (LIBLTE_BYTE_MSG_STRUCT *)&dl_dcch_msg.msg.dl_info_transfer.dedicated_info) != LIBLTE_SUCCESS) {
+    return;
+  }
+
+  mask_id_resp = 1;
   send_dl_dcch(&dl_dcch_msg);
 
   return;
