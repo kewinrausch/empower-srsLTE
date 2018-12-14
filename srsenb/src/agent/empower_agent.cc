@@ -49,7 +49,7 @@
 #include "srsenb/hdr/enb.h"
 #include "srsenb/hdr/agent/empower_agent.h"
 
-#define EMPOWER_AGENT_BUF_SMALL_SIZE          2048
+#define EMPOWER_AGENT_BUF_SMALL_SIZE                2048
 
 #define Error(fmt, ...)                             \
   do {                                              \
@@ -109,42 +109,8 @@
   (((b.tv_sec - a.tv_sec) * 1000) +   \
   ((b.tv_nsec - a.tv_nsec) / 1000000))
 
-/******************************************************************************
- *                                                                            *
- *                            Agent UE procedures                             *
- *                                                                            *
- ******************************************************************************/
-
 namespace srsenb {
-
-/* Routine:
- *    em_ue::em_ue
- * 
- * Abstract:
- *    Performs initialization of an em_ue class instance. The class is used
- *    internally in 'empower_agent' context and should not be exposed.
- * 
- * Assumptions:
- *    ---
- * 
- * Arguments:
- *    ---
- * 
- * Returns:
- *    ---
- */
-empower_agent::em_ue::em_ue()
-{
-  m_imsi         = 0;
-  m_plmn         = 0;
-
-  m_next_meas_id = 1;
-  m_next_obj_id  = 1;
-  m_next_rep_id  = 1;
-
-  memset(m_meas,   0, sizeof(ue_meas) * EMPOWER_AGENT_MAX_MEAS);
-}
-
+  
 /******************************************************************************
  *                                                                            *
  *                              Agent callbacks                               *
@@ -745,6 +711,262 @@ static struct em_agent_ops empower_agent_ops = {
 
 /******************************************************************************
  *                                                                            *
+ *                            Empower PRB reports                             *
+ *                                                                            *
+ ******************************************************************************/
+
+/* Routine:
+ *    em_prb_report::em_prb_report
+ * 
+ * Abstract:
+ *    Initializes a class instance.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_prb_report::em_prb_report()
+{
+  m_module_id    = 0;
+  m_trigger_id   = -1;
+  m_interval     = 1000;
+  m_DL           = 0;
+  m_UL           = 0;
+  m_last.tv_sec  = 0;
+  m_last.tv_nsec = 0;
+}
+
+/* Routine:
+ *    em_prb_report::~em_prb_report
+ * 
+ * Abstract:
+ *    Releases a class instance resources.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_prb_report::~em_prb_report()
+{
+  // Nothing
+}
+
+/* Routine:
+ *    em_prb_report::reset
+ * 
+ * Abstract:
+ *    Releases a class instance resources.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    0 on success, otherwise a negative error code.
+ */
+int em_prb_report::reset()
+{
+  m_module_id    = 0;
+  m_trigger_id   = -1;
+  m_interval     = 1000;
+  m_DL           = 0;
+  m_UL           = 0;
+  m_last.tv_sec  = 0;
+  m_last.tv_nsec = 0;
+
+  return 0;
+}
+
+/******************************************************************************
+ *                                                                            *
+ *                            Empower MAC context                             *
+ *                                                                            *
+ ******************************************************************************/
+
+/* Routine:
+ *    em_mac::em_mac
+ * 
+ * Abstract:
+ *    Initializes a class instance.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_mac::em_mac()
+{
+  // Nothing
+}
+
+/* Routine:
+ *    em_mac::~em_mac
+ * 
+ * Abstract:
+ *    Releases a class instance resources.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_mac::~em_mac()
+{
+  // Nothing
+}
+
+/* Routine:
+ *    em_mac::reset
+ * 
+ * Abstract:
+ *    Releases a class instance resources.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    0 on success, otherwise a negative error code.
+ */
+int em_mac::reset()
+{
+  return m_prb_ctx.reset();
+}
+
+/******************************************************************************
+ *                                                                            *
+ *                           Empower Cell context                             *
+ *                                                                            *
+ ******************************************************************************/
+
+/* Routine:
+ *    em_cell::em_cell
+ * 
+ * Abstract:
+ *    Initializes a class instance.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_cell::em_cell()
+{
+  m_pci = 0xffff;
+}
+
+/* Routine:
+ *    em_cell::~em_cell
+ * 
+ * Abstract:
+ *    Releases a class instance resources.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_cell::~em_cell()
+{
+  // Nothing
+}
+
+/* Routine:
+ *    em_cell::reset
+ * 
+ * Abstract:
+ *    Releases a class instance resources.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    0 on success, otherwise a negative error code.
+ */
+int em_cell::reset()
+{
+  return m_mac.reset();
+}
+
+/******************************************************************************
+ *                                                                            *
+ *                            Agent UE procedures                             *
+ *                                                                            *
+ ******************************************************************************/
+
+/* Routine:
+ *    em_ue::em_ue
+ * 
+ * Abstract:
+ *    Performs initialization of an em_ue class instance. The class is used
+ *    internally in 'empower_agent' context and should not be exposed.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    ---
+ * 
+ * Returns:
+ *    ---
+ */
+em_ue::em_ue()
+{
+  m_state        = 0;
+  m_state_dirty  = 0;
+
+  m_imsi         = 0;
+  m_plmn         = 0;
+  m_tmsi         = 0;
+  m_id_dirty     = 0;
+
+  m_next_meas_id = 1;
+  m_next_obj_id  = 1;
+  m_next_rep_id  = 1;
+
+  memset(m_meas,   0, sizeof(ue_meas) * EMPOWER_AGENT_MAX_MEAS);
+}
+
+em_ue::~em_ue()
+{
+  // Nothing
+}
+
+/******************************************************************************
+ *                                                                            *
  *                                Agent class                                 *
  *                                                                            *
  ******************************************************************************/
@@ -782,12 +1004,6 @@ empower_agent::empower_agent()
 
   m_ues_dirty    = 0;
   m_nof_ues      = 0;
-
-  memset(m_macrep, 0, sizeof(macrep) *  EMPOWER_AGENT_MAX_MACREP);
-  m_DL_prbs_used = 0;
-  m_DL_sf        = 0;
-  m_UL_prbs_used = 0;
-  m_UL_sf        = 0;
 
   m_RAN_feat     = 0;
   m_RAN_def_dirty= 0;
@@ -863,7 +1079,7 @@ ran_interface_common * empower_agent::get_ran()
  *    Initializes the agent instance and its subsystems. This call allow the 
  *    agent to become operational and response to local and network events.
  * 
- *    Initialization steps also fills static singleton variables here.
+ *    Initialization steps also fills static singleton variables.
  * 
  * Assumptions:
  *    ---
@@ -880,7 +1096,15 @@ int empower_agent::init(
   ran_interface_common * ran, 
   srslte::log *          logger)
 {
-  if(!rrc || !logger) {
+  if(!rrc || !ran || !logger) {
+    printf("ERROR: while initializing the agent; some arguments are NULL!\n");
+    printf("    RRC=%p, RAN=%p, LOGGER=%p\n", rrc, ran, logger);
+
+    return -1;
+  }
+
+  if(enb_id <= 0) {
+    printf("ERROR: agent eNB_id is %d\n", enb_id);
     return -1;
   }
 
@@ -889,10 +1113,17 @@ int empower_agent::init(
   m_ran   = ran;
   m_logger= logger;
   m_args  = enb::get_instance()->get_args();
+
   pthread_spin_init(&m_lock, 0);
 
+  // srs supports one cell only, so the valid cell is always at position 0
+  m_cells[0].m_pci        = (uint16_t)((all_args_t *)m_args)->enb.pci;
+  m_cells[0].m_mac.m_prbs = (int)((all_args_t *)m_args)->enb.n_prb;
+
+  /* Done once, it updates the static instance of Agent that will be used by
+   * the callback wrapper implementation.
+   */
   pthread_mutex_lock(&em_agent_lock);
-  // TODO: Consider raising error or exception if 'em_agent' has a value?
   if(!em_agent) {
     em_agent = this;
   }
@@ -961,11 +1192,6 @@ int empower_agent::reset()
   m_uer_mod  = 0;
   m_uer_tr   = 0;
   m_uer_feat = 0;
-  
-  // Reset any MAC report
-  for(i = 0; i < EMPOWER_AGENT_MAX_MACREP; i++) {
-    m_macrep[i].trigger_id = 0;
-  }
 
   // Reset any UE RRC state
   //for(rnti = 0; rnti < 0xffff; rnti++) {
@@ -995,6 +1221,12 @@ int empower_agent::reset()
     ue->m_next_obj_id  = 1;
     ue->m_next_rep_id  = 1;
   }
+
+  // Reset the contexts of any cell registered in the eNB
+  for(i = 0; i < MAX_CELLS; i++) {
+    m_cells[i].reset();
+  }
+
   Unlock(&m_lock);
 
   return 0;
@@ -1050,10 +1282,10 @@ int empower_agent::setup_cell_measurement(
   uint16_t cell_id, uint32_t mod_id, uint32_t interval, int trig_id)
 {
   int          i;
+  int          j;
   char         buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
   int          blen;
 
-  all_args_t * args = (all_args_t *)m_args;
   ep_cell_rep  rep;
 
   if(trig_id > 0) {
@@ -1061,66 +1293,41 @@ int empower_agent::setup_cell_measurement(
     return 0;
   }
 
-  rep.prb.DL_prbs      = (uint8_t)args->enb.n_prb;
-  rep.prb.DL_prbs_used = m_DL_prbs_used;
-  rep.prb.UL_prbs      = (uint8_t)args->enb.n_prb;
-  rep.prb.UL_prbs_used = m_UL_prbs_used;
+  /* Enable the feature if it was not there; once enabled it will be persisting
+   * right now. This must be modified in the future.
+   */
+  if(!m_cm_feat) {
+    m_cm_feat = 1;
+  }
 
-  blen = epf_sched_cell_meas_rep(
+  // Look for the right cell to report
+  for(i = 0; i < MAX_CELLS; i++) {
+    if(cell_id != m_cells[i].m_pci) {
+      continue;
+    }
+
+    rep.prb.DL_prbs      = (uint8_t)m_cells[i].m_mac.m_prbs;
+    rep.prb.DL_prbs_used = m_cells[i].m_mac.m_prb_ctx.m_DL;
+    rep.prb.UL_prbs      = (uint8_t)m_cells[i].m_mac.m_prbs;
+    rep.prb.UL_prbs_used = m_cells[i].m_mac.m_prb_ctx.m_UL;
+
+    blen = epf_sched_cell_meas_rep(
       buf,
       EMPOWER_AGENT_BUF_SMALL_SIZE,
       m_id,
-      (uint16_t)args->enb.pci,
+      m_cells[i].m_pci,
       mod_id,
       interval,
       &rep);
 
-  if(blen < 0)
-  {
-    Error("Cannot format cell measurement message!\n");
-    return 0;
-  }
-
-  em_send(m_id, buf, blen);
-
-#if 0
-  Lock(&m_lock);
-
-  if(trig_id > 0) {
-    for(i = 0; i < EMPOWER_AGENT_MAX_MACREP; i++) {
-      // Slot is 'reserved' if the trigger ID is different than 0
-      if(!m_macrep[i].trigger_id) {
-        // Reserve this slot!
-        m_macrep[i].trigger_id = trig_id;
-      }
+    if(blen < 0)
+    {
+      Error("Cannot format cell measurement message!\n");
+      return 0;
     }
-  } else {
-    
+
+    em_send(m_id, buf, blen);
   }
-  
-  Unlock(&m_lock);
-
-  if(i == EMPOWER_AGENT_MAX_MACREP) {
-    /* !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     * TODO:
-     * Due the inability of the controller to handle errors, error reporting
-     * here is suppressed. This NEEDS to be changed, but we need controller
-     * support first!
-     * !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     */
-    return 0;
-  }
-
-  // Setup the MAC report request here
-
-  m_macrep[i].mod_id   = mod_id;
-  m_macrep[i].interval = interval > 0 ? interval : 1000;
-  m_macrep[i].DL_acc   = 0;
-  m_macrep[i].UL_acc   = 0;
-  clock_gettime(CLOCK_REALTIME, &m_macrep[i].last);
-
-  Debug("New MAC report from module %d ready\n", mod_id);
-#endif
 
   return 0;
 }
@@ -1437,23 +1644,30 @@ void empower_agent::process_DL_results(
 {
   uint32_t     i;
   int          prbs = 0;
-  all_args_t * args = (all_args_t *)m_args;
+
+  // Immediately exit if no measurement of the DL has been setup
+  if(!m_cm_feat) {
+    return;
+  }
 
   for(i = 0; i < sched_result->nof_bc_elems; i++) {
-    prbs += prbs_from_dci(&sched_result->bc[i].dci, 1, args->enb.n_prb);
+    prbs += prbs_from_dci(
+      &sched_result->bc[i].dci, 1, m_cells[0].m_mac.m_prbs);
   }
 
   for(i = 0; i < sched_result->nof_rar_elems; i++) {
-    prbs += prbs_from_dci(&sched_result->rar[i].dci, 1, args->enb.n_prb);
+    prbs += prbs_from_dci(
+      &sched_result->rar[i].dci, 1, m_cells[0].m_mac.m_prbs);
   }
 
   for(i = 0; i < sched_result->nof_data_elems; i++) {
-    prbs += prbs_from_dci(&sched_result->data[i].dci, 1, args->enb.n_prb);
+    prbs += prbs_from_dci(
+      &sched_result->data[i].dci, 1, m_cells[0].m_mac.m_prbs);
   }
 
   Lock(&m_lock);
-  m_DL_prbs_used += prbs;
-  m_DL_sf++;
+  // Update the number of used resource blocks
+  m_cells[0].m_mac.m_prb_ctx.m_DL += prbs;
   Unlock(&m_lock);
 }
 
@@ -1480,15 +1694,20 @@ void empower_agent::process_UL_results(
 {
   uint32_t     i;
   int          prbs = 0;
-  all_args_t * args = (all_args_t *)m_args;
+  
+  // Immediately exit if no measurement of the DL has been setup
+  if(!m_cm_feat) {
+    return;
+  }
 
   for(i = 0; i < sched_result->nof_dci_elems; i++) {
-    prbs += prbs_from_dci(&sched_result->pusch[i].dci, 0, args->enb.n_prb);
+    prbs += prbs_from_dci(
+      &sched_result->pusch[i].dci, 0, m_cells[0].m_mac.m_prbs);
   }
 
   Lock(&m_lock);
-  m_UL_prbs_used += prbs;
-  m_UL_sf++;
+  // Update the number of used resource blocks
+  m_cells[0].m_mac.m_prb_ctx.m_UL += prbs;
   Unlock(&m_lock);
 }
 
@@ -1664,7 +1883,7 @@ void empower_agent::update_user_ID(
     m_RAN_def_dirty = 1;
 #endif
 
-#if 0
+#if 1
   // Always operate on that UE
   if(imsi == 222930000000101L) {
     // Add it to a slice
@@ -1677,6 +1896,10 @@ void empower_agent::update_user_ID(
     m_ran->rem_slice_user(
       rnti,
       0x00222f9300000000);
+
+    printf("UE %x moved to slice 1\n", rnti);
+  } else {
+    printf("Normal UE %x\n", rnti);
   }
 #endif
   }
@@ -1962,6 +2185,78 @@ void empower_agent::send_UE_meas(em_ue::ue_meas * m)
   em_send(m_id, buf, size);
 }
 
+#ifdef HAVE_RAN_SLICER
+
+/* Routine:
+ *    empower_agent::slice_feedback
+ * 
+ * Abstract:
+ *    Send a complete report of all the slices currently registered in the RAN
+ *    subsystem, and about user associated with them.
+ * 
+ * Assumptions:
+ *    'em_agent' pointer is valid. No atomic operations are necessary here.
+ * 
+ * Arguments:
+ *    - mod, Module ID which will receive the report
+ * 
+ * Returns:
+ *    ---
+ */
+void empower_agent::send_slice_feedback(uint32_t mod)
+{ 
+  char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
+  int              blen;
+  all_args_t *     args = enb::get_instance()->get_args();
+
+  int              i;
+  uint64_t         slices[32];
+  uint16_t         nof_slices;
+  
+  ep_ran_slice_det det;
+  ran_interface_common::slice_args slice_inf;
+
+  // User memory allocated for det, this way we directly save them there
+  slice_inf.users     = det.users;
+
+  nof_slices = em_agent->get_ran()->get_slices(32, slices);
+
+  if(nof_slices > 0) {
+    for(i = 0; i < nof_slices; i++) {
+      /* Do not report the default slice */
+      if(slices[i] == RAN_DEFAULT_SLICE) {
+        continue;
+      }
+
+      slice_inf.nof_users = EP_RAN_USERS_MAX;
+
+      if(em_agent->get_ran()->get_slice_info(slices[i], &slice_inf)) {
+        continue;
+      }
+
+      // Update values that will be sent to controller 
+      det.l2.usched = slice_inf.l2.mac.user_sched;
+      det.l2.rbgs   = slice_inf.l2.mac.rbg;
+      det.nof_users = slice_inf.nof_users;
+
+      blen = epf_single_ran_slice_rep(
+        buf, 
+        EMPOWER_AGENT_BUF_SMALL_SIZE,
+        em_agent->get_id(),
+        (uint16_t)args->enb.pci,
+        mod,
+        slices[i],
+        &det);
+
+      if(blen > 0) {
+        em_send(em_agent->get_id(), buf, blen);
+      }
+    }
+  }
+}
+
+#endif // HAVE_RAN_SLICER
+
 /******************************************************************************
  *                                                                            *
  *                            Generic utilities                               *
@@ -2127,6 +2422,8 @@ void empower_agent::macrep_check()
  */
 void empower_agent::ran_check()
 {
+#ifdef HAVE_RAN_SLICER
+
   ran_interface_common::slice_args slice_inf;
 
   char             buf[EMPOWER_AGENT_BUF_SMALL_SIZE] = {0};
@@ -2150,6 +2447,8 @@ void empower_agent::ran_check()
   Lock(&m_lock);
   m_RAN_def_dirty = 0;
   Unlock(&m_lock);
+
+#endif // HAVE_RAN_SLICER
 
   return;
 }
