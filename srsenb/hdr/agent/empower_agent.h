@@ -58,6 +58,134 @@ enum agent_state {
   AGENT_STATE_STARTED,
 };
 
+// Redefinition of timespec in a shorter way
+typedef struct timespec em_time;
+
+/* The Physical Resource Block report.
+ *
+ * Contains logic which identifies and store values valid for such reports.
+ * This class contains logic for the measurements and calculations too.
+ */
+class em_prb_report {
+public:
+  mod_id_t m_module_id;  // Module ID bound to this measurement
+  int      m_trigger_id; // Trigger ID bound to this measurement
+  uint32_t m_interval;   // Interval in ms
+  uint32_t m_DL;         // Downlink resources accumulator
+  uint32_t m_UL;         // Uplink resources accumulator
+  em_time  m_last;       // Last time the measurement has been computed
+
+  em_prb_report();
+  ~em_prb_report();
+
+  // Perform computations over the single PRB report
+  int compute();
+
+  // Reset the cell to accomodate a starting state
+  int reset();
+private:
+}; /* class em_prb_report */
+
+/* The MAC layer definition for a signle Empower Cell.
+ *
+ * Contains logic valid for the Empower Agent which is related to the MAC layer
+ * of the LTE stack.
+ */
+class em_mac {
+public:
+  // Number of Physical Resource Blocks used by the cell
+  int           m_prbs;
+  // PRBs reports contexts
+  em_prb_report m_prb_ctx;
+
+  em_mac();
+  ~em_mac();
+
+  // Perform computations over the MAC context
+  int compute();
+
+  // Reset the cell to accomodate a starting state
+  int reset();
+private:
+}; // class em_mac
+
+/* The Cell definition for Empower Agent.
+ *
+ * It aggregates logic and measurement that are related to a cell, and have
+ * a meaning within the cell only.
+ */
+class em_cell {
+public:
+  uint16_t m_pci; // Physical Cell Id
+  em_mac   m_mac; // MAC layer context for the cell
+
+  em_cell();
+  ~em_cell();
+
+  // Perform computations over the cell context
+  int compute();
+
+  // Reset the cell to accomodate a starting state
+  int reset();
+private:
+}; /* class em_cell */
+
+/* EmPOWER Agent UE class.
+
+  * This organizes data and procedures which are relative to a certain UE from
+  * an Empower-agent perspective. since this class is only internally used, all
+  * its elements are public.
+  */
+class em_ue {
+public:
+  // UE measurement container for a single cell
+  typedef struct {
+    int      dirty; // Data is new?
+    uint16_t pci;   // Physical Cell ID
+    uint8_t  rsrp;  // Signal power
+    uint8_t  rsrq;  // signal quality
+  } ue_cell_meas;
+
+  // UE measurement container for a requesting module
+  typedef struct {
+    uint32_t     id;      // ID assigned by agent-controller circuit
+    uint32_t     mod_id;  // ID of the requesting module
+    int          trig_id; // ID of the trigger assigned
+
+    uint32_t     meas_id; // Measure Id on the UE-eNB circuit
+    uint32_t     obj_id;  // Object Id on the UE-eNB circuit
+    uint32_t     rep_id;  // Reprot Id on the UE-eNB circuit
+
+    uint16_t     freq;    // Frequency to measure, EARFCN
+    uint16_t     max_cells; // Max cell to report*/
+    uint16_t     max_meas;// Max measure to take
+    int          interval;// Measurement interval
+
+    ue_cell_meas carrier; // Report of the carrier signal
+    int          c_dirty; // Carrier signal dirty?
+
+    // Reports of all the other cells
+    ue_cell_meas neigh[EMPOWER_AGENT_MAX_CELL_MEAS];
+  } ue_meas;
+
+  uint8_t  m_state; // State of the UE
+  int      m_state_dirty; // State has to be updated?
+
+  uint64_t m_imsi; // International Mobile Subscriber Identity
+  uint32_t m_plmn; // Public Land Mobile Network
+  uint32_t m_tmsi; // Temporary Mobile Subscriber Identity
+  int      m_id_dirty; // Identity has to be updated?
+
+  uint32_t m_next_meas_id; // Next Id for UE ue_meas.meas_id
+  uint32_t m_next_obj_id;  // Next Id for UE ue_meas.obj_id
+  uint32_t m_next_rep_id;  // Next Id for UE ue_meas.rep_id
+
+  ue_meas  m_meas[EMPOWER_AGENT_MAX_MEAS]; // Measurements
+
+  em_ue();
+  ~em_ue();
+}; // class em_ue
+
 /* The EmPOWER Agent.
  *
  * This Agent has the objective to exchange information with an EmPOWER 
@@ -66,17 +194,9 @@ enum agent_state {
  */
 class empower_agent : public agent
 {
-public: // class empower_agent  
-
-  // MAC report details 
-  typedef struct mac_report {
-    uint32_t        mod_id;
-    int             trigger_id;
-    uint32_t        interval;
-    uint64_t        DL_acc;
-    uint64_t        UL_acc;
-    struct timespec last;
-  } macrep;
+public:
+  // Maximum amount of managed cell for a single agent
+  static const int MAX_CELLS = 4;
 
   uint32_t m_RAN_def_dirty;
 
@@ -163,61 +283,6 @@ public: // class empower_agent
 
 private: // class empower_agent
 
-  /* EmPOWER Agent UE class.
-
-   * This organizes data and procedures which are relative to a certain UE from
-   * an Empower-agent perspective. since this class is only internally used, all
-   * its elements are public.
-   */
-  class em_ue {
-  public:
-    // UE measurement container for a single cell
-    typedef struct {
-      int      dirty; // Data is new?
-      uint16_t pci;   // Physical Cell ID
-      uint8_t  rsrp;  // Signal power
-      uint8_t  rsrq;  // signal quality
-    } ue_cell_meas;
-
-    // UE measurement container for a requesting module
-    typedef struct {
-      uint32_t     id;      // ID assigned by agent-controller circuit
-      uint32_t     mod_id;  // ID of the requesting module
-      int          trig_id; // ID of the trigger assigned
-
-      uint32_t     meas_id; // Measure Id on the UE-eNB circuit
-      uint32_t     obj_id;  // Object Id on the UE-eNB circuit
-      uint32_t     rep_id;  // Reprot Id on the UE-eNB circuit
-
-      uint16_t     freq;    // Frequency to measure, EARFCN
-      uint16_t     max_cells; // Max cell to report*/
-      uint16_t     max_meas;// Max measure to take
-      int          interval;// Measurement interval
-
-      ue_cell_meas carrier; // Report of the carrier signal
-      int          c_dirty; // Carrier signal dirty?
-
-      // Reports of all the other cells
-      ue_cell_meas neigh[EMPOWER_AGENT_MAX_CELL_MEAS];
-    } ue_meas;
-
-    uint8_t m_state; // State of the UE
-    int     m_state_dirty; // State has to be updated?
-
-    uint64_t m_imsi; // International Mobile Subscriber Identity
-    uint32_t m_plmn; // Public Land Mobile Network
-    uint32_t m_tmsi; // Temporary Mobile Subscriber Identity
-    int      m_id_dirty; // Identity has to be updated?
-
-    uint32_t m_next_meas_id; // Next Id for UE ue_meas.meas_id
-    uint32_t m_next_obj_id;  // Next Id for UE ue_meas.obj_id
-    uint32_t m_next_rep_id;  // Next Id for UE ue_meas.rep_id
-    ue_meas  m_meas[EMPOWER_AGENT_MAX_MEAS]; // Measurements
-
-    // Constructor for the UE class
-    em_ue();
-  }; // class em_ue
-
   unsigned int           m_id; // ID of the agent/eNB
 
   rrc_interface_agent  * m_rrc; // Pointer to RRC interface
@@ -226,6 +291,8 @@ private: // class empower_agent
   srslte::log *          m_logger; // Pointer to Agent logger instance
 
   void *                 m_args; // eNB arguments
+
+  em_cell                m_cells[MAX_CELLS]; // Cells contexts
 
   int                    m_uer_feat; // UE reporting feature enabled?
   int                    m_uer_tr; // UE reporting feature trigger
@@ -237,13 +304,9 @@ private: // class empower_agent
   std::map<uint16_t, em_ue *> m_ues; // Map of User Equipments
   int                    m_ues_dirty; // Are there modifications to report?
 
-  // MAC-related variables
+  // Cell measurement related variables
   
-  macrep                 m_macrep[EMPOWER_AGENT_MAX_MACREP];
-  uint32_t               m_DL_sf; // Number of subframes for this report
-  uint32_t               m_DL_prbs_used; // Number of resources used
-  uint32_t               m_UL_sf; // Number of subframes for this report
-  uint32_t               m_UL_prbs_used; // Number of resources used
+  int                    m_cm_feat; // Cell measurement feature is enabled?
 
   // RAN-related variables
 
@@ -269,8 +332,8 @@ private: // class empower_agent
   // Perform a check on UE measurement reporting mechanism
   void measure_check();
 
-  // Perform a check on MAC reporting mechanism
-  //void macrep_check();
+  // Perform a check on Cell PRBs measurements
+  //void cellprb_check();
 
   // Perform a check on RAN reporting mechanism
   void ran_check();
@@ -298,6 +361,12 @@ private: // class empower_agent
 
   // Send an UE measurement report to the controller
   void send_UE_meas(em_ue::ue_meas * m);
+
+#ifdef HAVE_RAN_SLICER
+  // Send a slices feedback to the controller
+  void send_slice_feedback(uint32_t mod);
+#endif
+
 }; // class empower_agent
 
 } // namespace srsenb

@@ -30,11 +30,13 @@
 #include "srsenb/hdr/upper/rrc.h"
 #include "srslte/srslte.h"
 #include "srslte/asn1/liblte_mme.h"
-
 #include "srsenb/hdr/ran/ran.h"
+#include "srslte/common/int_helpers.h"
 
 using srslte::byte_buffer_t;
 using srslte::bit_buffer_t;
+using srslte::uint32_to_uint8;
+using srslte::uint8_to_uint32;
 
 namespace srsenb {
   
@@ -924,20 +926,20 @@ void rrc::activity_monitor::run_thread()
 *******************************************************************************/
 rrc::ue::ue()
 {
-  parent           = NULL; 
+  parent            = NULL;
   set_activity();
-  has_tmsi         = false;
-  connect_notified = false; 
-  transaction_id   = 0;
-  sr_allocated     = false;
-  sr_sched_sf_idx  = 0;
-  sr_sched_prb_idx = 0;
-  sr_N_pucch       = 0;
-  sr_I             = 0;
-  cqi_allocated    = false;
-  cqi_pucch        = 0;
-  cqi_idx          = 0;
-  cqi_sched_sf_idx = 0;
+  has_tmsi          = false;
+  connect_notified  = false;
+  transaction_id    = 0;
+  sr_allocated      = false;
+  sr_sched_sf_idx   = 0;
+  sr_sched_prb_idx  = 0;
+  sr_N_pucch        = 0;
+  sr_I              = 0;
+  cqi_allocated     = false;
+  cqi_pucch         = 0;
+  cqi_idx           = 0;
+  cqi_sched_sf_idx  = 0;
   cqi_sched_prb_idx = 0;
   rlf_cnt          = 0;
   mask_id_resp     = 0;
@@ -1048,7 +1050,7 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
   switch(ul_dcch_msg.msg_type) {
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_SETUP_COMPLETE:
       handle_rrc_con_setup_complete(&ul_dcch_msg.msg.rrc_con_setup_complete, pdu);
-#if 0
+#if 1
       send_identity_request();
 #endif
       break;      
@@ -1114,7 +1116,52 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
   int      i;
   uint64_t tmp;
 
-  LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT srm;
+  //uint8_t  at;
+  //LIBLTE_MME_EPS_MOBILE_ID_STRUCT * eps = 0;
+  
+  // This part is taken from srsEPC Attach Request handlind is s1ap_nas_transport.cc, procedure handle_nas_attach_request()
+  LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT           attach_req;
+  LIBLTE_MME_PDN_CONNECTIVITY_REQUEST_MSG_STRUCT pdn_con_req;
+  LIBLTE_ERROR_ENUM                              err;
+
+  //Get NAS Attach Request and PDN connectivity request messages
+  err = liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)&msg->dedicated_info_nas, &attach_req);
+
+  if(err == LIBLTE_SUCCESS) {
+    //at  = attach_req.eps_attach_type;
+    //eps = &attach_req.eps_mobile_id;
+
+    //if(eps) {
+      switch(attach_req.eps_mobile_id.type_of_id) {
+      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
+        tmp = 0;
+
+        for(i = 0; i <= 14; i++){
+          tmp += attach_req.eps_mobile_id.imsi[i] * std::pow(10, 14 - i);
+        }
+
+        // Update the IMSI
+        parent->agent->update_user_ID(rnti, 0, tmp, 0);
+
+        break;
+      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
+        // Update the PLMN and the TMSI
+        parent->agent->update_user_ID(
+          rnti, 
+          0,
+          0, 
+          attach_req.eps_mobile_id.guti.m_tmsi);
+        break;
+      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
+        // IMEI not handled right now
+        break;
+      default:
+        break;  
+      }
+    //}
+
+    err = liblte_mme_unpack_pdn_connectivity_request_msg(&attach_req.esm_msg, &pdn_con_req);
+  }
 
   parent->rrc_log->info("RRCConnectionSetupComplete transaction ID: %d\n", msg->rrc_transaction_id);
 
@@ -1123,35 +1170,6 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
 
   memcpy(pdu->msg, msg->dedicated_info_nas.msg, msg->dedicated_info_nas.N_bytes);
   pdu->N_bytes = msg->dedicated_info_nas.N_bytes;
-
-  if(liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)pdu, &srm) == LIBLTE_SUCCESS) {
-    switch(srm.eps_mobile_id.type_of_id) {
-    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
-      tmp = 0;
-
-      for(i = 0; i <= 14; i++){
-        tmp += srm.eps_mobile_id.imsi[i] * std::pow(10,14 - i);
-      }
-
-      // Update the IMSI
-      parent->agent->update_user_ID(rnti, 0, tmp, 0);
-
-      break;
-    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
-      // Update the PLMN and the TMSI
-      parent->agent->update_user_ID(
-        rnti, 
-        0,
-        0, 
-        srm.eps_mobile_id.guti.m_tmsi);
-      break;
-    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
-      // IMEI not handled right now
-      break;
-    default:
-      break;  
-    }
-  }
 
   // Acknowledge Dedicated Configuration
   parent->phy->set_conf_dedicated_ack(rnti, true);
@@ -1162,7 +1180,10 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
   } else {
     parent->s1ap->initial_ue(rnti, (LIBLTE_S1AP_RRC_ESTABLISHMENT_CAUSE_ENUM)establishment_cause, pdu);
   }
+
   state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
+
+  return;
 }
 
 void rrc::ue::handle_rrc_ul_info_transfer(LIBLTE_RRC_UL_INFORMATION_TRANSFER_STRUCT * msg, srslte::byte_buffer_t * pdu)
@@ -1358,8 +1379,12 @@ void rrc::ue::setup_erab(uint8_t id, LIBLTE_S1AP_E_RABLEVELQOSPARAMETERS_STRUCT 
   parent->gtpu->add_bearer(rnti, lcid, addr_, erabs[id].teid_out, &(erabs[id].teid_in));
 
   if(nas_pdu) {
-    memcpy(parent->erab_info.msg, nas_pdu->buffer, nas_pdu->n_octets);
-    parent->erab_info.N_bytes = nas_pdu->n_octets;
+    nas_pending = true;
+    memcpy(erab_info.buffer, nas_pdu->buffer, nas_pdu->n_octets);
+    erab_info.N_bytes = nas_pdu->n_octets;
+    parent->rrc_log->info_hex(erab_info.buffer, erab_info.N_bytes, "setup_erab nas_pdu -> erab_info rnti 0x%x", rnti);
+  } else {
+    nas_pending = false;
   }
 }
 
@@ -1796,16 +1821,23 @@ void rrc::ue::send_connection_reconf(srslte::byte_buffer_t *pdu)
 
   // DRB1 has already been configured in GTPU through bearer setup
 
-  // Add NAS Attach accept 
-  conn_reconf->N_ded_info_nas = 1; 
-  conn_reconf->ded_info_nas_list[0].N_bytes = parent->erab_info.N_bytes;
-  memcpy(conn_reconf->ded_info_nas_list[0].msg, parent->erab_info.msg, parent->erab_info.N_bytes);
-  
+  // Add NAS Attach accept
+  if(nas_pending){
+    parent->rrc_log->debug("Adding NAS message to connection reconfiguration\n");
+    conn_reconf->N_ded_info_nas = 1;
+
+    parent->rrc_log->info_hex(erab_info.buffer, erab_info.N_bytes, "connection_reconf erab_info -> nas_info rnti 0x%x\n", rnti);
+    conn_reconf->ded_info_nas_list[0].N_bytes = erab_info.N_bytes;
+    memcpy(conn_reconf->ded_info_nas_list[0].msg, erab_info.buffer, erab_info.N_bytes);
+  } else {
+    parent->rrc_log->debug("Not adding NAS message to connection reconfiguration\n");
+    conn_reconf->N_ded_info_nas = 0;
+  }
   // Reuse same PDU
   pdu->reset();
-  
+
   send_dl_dcch(&dl_dcch_msg, pdu);
-  
+
   state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
 }
 
@@ -1856,8 +1888,9 @@ void rrc::ue::send_connection_reconf_new_bearer(LIBLTE_S1AP_E_RABTOBESETUPLISTBE
     // DRB has already been configured in GTPU through bearer setup
 
     // Add NAS message
-    conn_reconf->ded_info_nas_list[conn_reconf->N_ded_info_nas].N_bytes = parent->erab_info.N_bytes;
-    memcpy(conn_reconf->ded_info_nas_list[conn_reconf->N_ded_info_nas].msg, parent->erab_info.msg, parent->erab_info.N_bytes);
+    parent->rrc_log->info_hex(erab_info.buffer, erab_info.N_bytes, "reconf_new_bearer erab_info -> nas_info rnti 0x%x\n", rnti);
+    conn_reconf->ded_info_nas_list[conn_reconf->N_ded_info_nas].N_bytes = erab_info.N_bytes;
+    memcpy(conn_reconf->ded_info_nas_list[conn_reconf->N_ded_info_nas].msg, erab_info.buffer, erab_info.N_bytes);
     conn_reconf->N_ded_info_nas++;
   }
 

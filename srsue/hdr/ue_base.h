@@ -111,6 +111,7 @@ typedef struct {
 
 typedef struct {
   std::string   ip_netmask;
+  std::string   ip_devname;
   phy_args_t    phy;
   float         metrics_period_secs;
   bool          pregenerate_signals;
@@ -122,7 +123,6 @@ typedef struct {
 
 typedef struct {
   rf_args_t     rf;
-  rf_cal_t      rf_cal; 
   pcap_args_t   pcap;
   trace_args_t  trace;
   log_args_t    log;
@@ -159,8 +159,8 @@ public:
 
   virtual bool init(all_args_t *args_) = 0;
   virtual void stop() = 0;
-  virtual bool attach() = 0;
-  virtual bool deattach() = 0;
+  virtual bool switch_on() = 0;
+  virtual bool switch_off() = 0;
   virtual bool is_attached() = 0;
   virtual void start_plot() = 0;
 

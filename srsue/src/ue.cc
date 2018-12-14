@@ -181,8 +181,10 @@ bool ue::init(all_args_t *args_) {
   
   // Set RF options
   if (args->rf.time_adv_nsamples.compare("auto")) {
-    radio.set_tx_adv(atoi(args->rf.time_adv_nsamples.c_str()));
-  }  
+    int t = atoi(args->rf.time_adv_nsamples.c_str());
+    radio.set_tx_adv(abs(t));
+    radio.set_tx_adv_neg(t<0);
+  }
   if (args->rf.burst_preamble.compare("auto")) {
     radio.set_burst_preamble(atof(args->rf.burst_preamble.c_str()));    
   }
@@ -191,10 +193,7 @@ bool ue::init(all_args_t *args_) {
     radio.set_continuous_tx(args->rf.continuous_tx.compare("yes")?false:true);
   }
 
-  radio.set_manual_calibration(&args->rf_cal);
-
   // Set PHY options
-
   if (args->rf.tx_gain > 0) {
     args->expert.phy.ul_pwr_ctrl_en = false; 
   } else {
@@ -226,13 +225,16 @@ bool ue::init(all_args_t *args_) {
   nas.init(usim, &rrc, &gw, &nas_log, nas_cfg);
   gw.init(&pdcp, &nas, &gw_log, 3 /* RB_ID_DRB1 */);
   gw.set_netmask(args->expert.ip_netmask);
-  rrc.init(&phy, &mac, &rlc, &pdcp, &nas, usim, &gw, &mac, &rrc_log);
+  gw.set_tundevname(args->expert.ip_devname);
   
   // Get current band from provided EARFCN
   args->rrc.supported_bands[0] = srslte_band_get_band(args->rf.dl_earfcn);
   args->rrc.nof_supported_bands = 1;
   args->rrc.ue_category = atoi(args->ue_category_str.c_str());
-  rrc.set_args(&args->rrc);
+
+  // set args and initialize RRC
+  rrc.set_args(args->rrc);
+  rrc.init(&phy, &mac, &rlc, &pdcp, &nas, usim, &gw, &mac, &rrc_log);
 
   // Currently EARFCN list is set to only one frequency as indicated in ue.conf
   std::vector<uint32_t> earfcn_list;
@@ -299,12 +301,27 @@ void ue::stop()
   }
 }
 
-bool ue::attach() {
+bool ue::switch_on() {
   return nas.attach_request();
 }
 
-bool ue::deattach() {
-  return nas.deattach_request();
+bool ue::switch_off() {
+  // generate detach request
+  nas.detach_request();
+
+  // wait for max. 5s for it to be sent (according to TS 24.301 Sec 25.5.2.2)
+  const uint32_t RB_ID_SRB1 = 1;
+  int cnt = 0, timeout = 5;
+  while (rlc.get_buffer_state(RB_ID_SRB1) && ++cnt <= timeout) {
+    sleep(1);
+  }
+  bool detach_sent = true;
+  if (rlc.get_buffer_state(RB_ID_SRB1)) {
+    nas_log.warning("Detach couldn't be sent after %ds.\n", timeout);
+    detach_sent = false;
+  }
+
+  return detach_sent;
 }
 
 bool ue::is_attached()

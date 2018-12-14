@@ -568,7 +568,7 @@ int mac::rach_detected(uint32_t tti, uint32_t preamble_idx, uint32_t time_adv)
 
   // Save RA info
   pending_rars[ra_id].preamble_idx = preamble_idx;
-  pending_rars[ra_id].ta_cmd       = 2*time_adv;
+  pending_rars[ra_id].ta_cmd       = time_adv;
   pending_rars[ra_id].temp_crnti   = last_rnti;
 
   // Add new user to the scheduler so that it can RX/TX SRB0
@@ -593,7 +593,11 @@ int mac::rach_detected(uint32_t tti, uint32_t preamble_idx, uint32_t time_adv)
                  tti, preamble_idx, time_adv, last_rnti);
 
   // Increae RNTI counter
+#if 0
   last_rnti++;
+#else
+  last_rnti += 3;
+#endif
   if (last_rnti >= 60000) {
     last_rnti = 70;
   }

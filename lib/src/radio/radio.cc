@@ -97,16 +97,6 @@ void radio::reset()
   usleep(100000);
 }
 
-void radio::set_manual_calibration(rf_cal_t* calibration)
-{
-  srslte_rf_cal_t tx_cal; 
-  tx_cal.dc_gain  = calibration->tx_corr_dc_gain;
-  tx_cal.dc_phase = calibration->tx_corr_dc_phase;
-  tx_cal.iq_i     = calibration->tx_corr_iq_i;
-  tx_cal.iq_q     = calibration->tx_corr_iq_q;
-  srslte_rf_set_tx_cal(&rf_device, &tx_cal);
-}
-
 void radio::set_tx_rx_gain_offset(float offset) {
   srslte_rf_set_tx_rx_gain_offset(&rf_device, offset);  
 }
@@ -358,8 +348,8 @@ void radio::set_tx_srate(double srate)
   cur_tx_srate = srslte_rf_set_tx_srate(&rf_device, srate);
   burst_preamble_samples = (uint32_t) (cur_tx_srate * burst_preamble_sec);
   if (burst_preamble_samples > burst_preamble_max_samples) {
+    fprintf(stderr, "Error setting TX srate %.1f MHz. Maximum burst preamble samples: %d, requested: %d\n", srate*1e-6, burst_preamble_max_samples, burst_preamble_samples  );
     burst_preamble_samples = burst_preamble_max_samples;
-    fprintf(stderr, "Error setting TX srate %.1f MHz. Maximum frequency for zero prepadding is 30.72 MHz\n", srate*1e-6);
   }
   burst_preamble_time_rounded = (double) burst_preamble_samples/cur_tx_srate;  
   

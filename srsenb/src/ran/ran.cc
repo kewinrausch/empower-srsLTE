@@ -80,6 +80,8 @@ namespace srsenb
  */
 int ran::init(mac_interface_ran * mac, srslte::log * log) 
 {
+  slice_args sargs;
+
   l1_caps = 0;
   l2_caps = EP_RAN_LAYER2_CAP_PRB_SLICING;
   l3_caps = 0;
@@ -87,23 +89,16 @@ int ran::init(mac_interface_ran * mac, srslte::log * log)
   m_log   = log;
   m_mac   = mac;
 
-#if 0
-  slice_args sargs;
-
   memset(&sargs, 0, sizeof(sargs));
 
-  /*
-   *
-   * Default Slice configuration and addition into the RAN subsystem:
-   * 
-   */
-  sargs.l2.mac.user_sched = 1;
-  sargs.l2.mac.rbg        = 0;
-  sargs.l2.mac.time       = -1;
+  sargs.l2.mac.user_sched = RAN_MAC_USER_RR;
+  sargs.l2.mac.rbg        = 6;
+  sargs.l2.mac.time       = 1;
 
-  add_slice(RAN_DEFAULT_SLICE, 0);
-  set_slice(RAN_DEFAULT_SLICE, &sargs);
-#endif
+  // TEMPORARY: Add and set default slice for 222f93 PLMN
+  add_slice(0x00222f9300000000, 0);
+  set_slice(0x00222f9300000000, &sargs);
+
   return 0;
 }
 

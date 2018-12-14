@@ -61,6 +61,7 @@ phch_worker::phch_worker() : tr_exec(10240)
   chest_loop = NULL;
 
   bzero(signal_buffer, sizeof(cf_t*)*SRSLTE_MAX_PORTS);
+  ZERO_OBJECT(cell);
 
   mem_initiated   = false;
   cell_initiated  = false; 
@@ -86,6 +87,7 @@ phch_worker::~phch_worker()
 
 void phch_worker::reset()
 {
+  pthread_mutex_lock(&mutex);
   bzero(&dl_metrics, sizeof(dl_metrics_t));
   bzero(&ul_metrics, sizeof(ul_metrics_t));
   bzero(&dmrs_cfg, sizeof(srslte_refsignal_dmrs_pusch_cfg_t));    
@@ -101,6 +103,7 @@ void phch_worker::reset()
   I_sr = 0;
   cfi  = 0;
   rssi_read_cnt = 0;
+  pthread_mutex_unlock(&mutex);
 }
 
 void phch_worker::enable_pdsch_coworker() {
@@ -137,6 +140,10 @@ bool phch_worker::init(uint32_t max_prb, srslte::log *log_h, srslte::log *log_ph
     return false;
   }
 
+  if (phy->args->pdsch_8bit_decoder) {
+    ue_dl.pdsch.llr_is_8bit = true;
+    ue_dl.pdsch.dl_sch.llr_is_8bit = true;
+  }
 
   srslte_chest_dl_set_rsrp_neighbour(&ue_dl.chest, true);
   srslte_chest_dl_average_subframe(&ue_dl.chest, phy->args->average_subframe_enabled);
@@ -187,10 +194,10 @@ cf_t* phch_worker::get_buffer(uint32_t antenna_idx)
   return signal_buffer[antenna_idx]; 
 }
 
-void phch_worker::set_tti(uint32_t tti_, uint32_t tx_tti_)
+void phch_worker::set_tti(uint32_t tti_, uint32_t tx_worker_cnt)
 {
-  tti    = tti_; 
-  tx_tti = tx_tti_;
+  tti    = tti_;
+  tx_tti = tx_worker_cnt;
   log_h->step(tti);
   if (log_phy_lib_h) {
     log_phy_lib_h->step(tti);
@@ -456,11 +463,6 @@ void phch_worker::work_imp()
 
   tr_log_end();
 
-  if (next_offset > 0) {
-    phy->worker_end(tx_tti, signal_ready, signal_ptr, SRSLTE_SF_LEN_PRB(cell.nof_prb)+next_offset, tx_time);
-  } else {
-    phy->worker_end(tx_tti, signal_ready, &signal_ptr[-next_offset], SRSLTE_SF_LEN_PRB(cell.nof_prb)+next_offset, tx_time);
-  }
 
   if(SUBFRAME_TYPE_REGULAR == sf_cfg.sf_type) {
     if (!dl_action.generate_ack_callback) {
@@ -484,6 +486,13 @@ void phch_worker::work_imp()
       phy->set_mch_period_stop(0);
     }
   }
+
+  if (next_offset > 0) {
+    phy->worker_end(tx_tti, signal_ready, signal_ptr, SRSLTE_SF_LEN_PRB(cell.nof_prb)+next_offset, tx_time);
+  } else {
+    phy->worker_end(tx_tti, signal_ready, &signal_ptr[-next_offset], SRSLTE_SF_LEN_PRB(cell.nof_prb)+next_offset, tx_time);
+  }
+
   if(SUBFRAME_TYPE_REGULAR == sf_cfg.sf_type){
     update_measurements();
   }
@@ -1262,6 +1271,22 @@ void phch_worker::encode_pusch(srslte_ra_ul_grant_t *grant, uint8_t *payload, ui
   char timestr[64];
   timestr[0]='\0';
   
+  /* Check input values ranges */
+  if (rnti == 0) {
+    Warning("Encode PUSCH: Invalid RNTI (= 0)\n");
+    return;
+  } else if (rv > 3) {
+    Warning("Encode PUSCH: Invalid RV (= %ud)\n", rv);
+    return;
+  } else if (payload == NULL) {
+    Warning("Encode PUSCH: NULL payload\n");
+    return;
+  } else if (softbuffer == NULL) {
+    Warning("Encode PUSCH: NULL softbuffer\n");
+    return;
+  }
+
+  /* Configure and encode */
   if (srslte_ue_ul_cfg_grant(&ue_ul, grant, TTI_TX(tti), rv, current_tx_nb)) {
     Error("Configuring UL grant\n");
   }
@@ -1402,6 +1427,7 @@ void phch_worker::enable_pregen_signals(bool enabled)
 
 void phch_worker::set_ul_params(bool pregen_disabled)
 {
+  pthread_mutex_lock(&mutex);
 
   phy_interface_rrc::phy_cfg_common_t         *common    = &phy->config->common;
   LIBLTE_RRC_PHYSICAL_CONFIG_DEDICATED_STRUCT *dedicated = &phy->config->dedicated;
@@ -1504,7 +1530,9 @@ void phch_worker::set_ul_params(bool pregen_disabled)
   /* SR configuration */
   I_sr                         = dedicated->sched_request_cnfg.sr_cnfg_idx;
   sr_configured                = true;
-  
+
+  pthread_mutex_unlock(&mutex);
+
   if (pregen_enabled && !pregen_disabled) { 
     Info("Pre-generating UL signals worker=%d\n", get_id());
     srslte_ue_ul_pregen_signals(&ue_ul);

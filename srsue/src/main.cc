@@ -38,6 +38,7 @@
 
 #include "srsue/hdr/ue.h"
 #include "srslte/common/config_file.h"
+#include "srslte/common/crash_handler.h"
 #include "srslte/srslte.h"
 #include "srsue/hdr/metrics_stdout.h"
 #include "srsue/hdr/metrics_csv.h"
@@ -89,12 +90,10 @@ void parse_args(all_args_t *args, int argc, char *argv[]) {
     ("nas.pass",              bpo::value<string>(&args->nas.apn_pass)->default_value(""),  "Password for CHAP authentication")
     ("nas.force_imsi_attach", bpo::value<bool>(&args->nas.force_imsi_attach)->default_value(false),  "Whether to always perform an IMSI attach")
 
-
     ("pcap.enable", bpo::value<bool>(&args->pcap.enable)->default_value(false), "Enable MAC packet captures for wireshark")
     ("pcap.filename", bpo::value<string>(&args->pcap.filename)->default_value("ue.pcap"), "MAC layer capture filename")
     ("pcap.nas_enable",   bpo::value<bool>(&args->pcap.nas_enable)->default_value(false), "Enable NAS packet captures for wireshark")
     ("pcap.nas_filename", bpo::value<string>(&args->pcap.nas_filename)->default_value("ue_nas.pcap"), "NAS layer capture filename (useful when NAS encryption is enabled)")
-
 
     ("trace.enable", bpo::value<bool>(&args->trace.enable)->default_value(false), "Enable PHY and radio timing traces")
     ("trace.phy_filename", bpo::value<string>(&args->trace.phy_filename)->default_value("ue.phy_trace"),
@@ -122,7 +121,6 @@ void parse_args(all_args_t *args, int argc, char *argv[]) {
     ("log.usim_level", bpo::value<string>(&args->log.usim_level), "USIM log level")
     ("log.usim_hex_limit", bpo::value<int>(&args->log.usim_hex_limit), "USIM log hex dump limit")
 
-
     ("log.all_level", bpo::value<string>(&args->log.all_level)->default_value("info"), "ALL log level")
     ("log.all_hex_limit", bpo::value<int>(&args->log.all_hex_limit)->default_value(32), "ALL log hex dump limit")
 
@@ -143,6 +141,10 @@ void parse_args(all_args_t *args, int argc, char *argv[]) {
     ("expert.ip_netmask",
      bpo::value<string>(&args->expert.ip_netmask)->default_value("255.255.255.0"),
      "Netmask of the tun_srsue device")
+
+    ("expert.ip_devname",
+     bpo::value<string>(&args->expert.ip_devname)->default_value("tun_srsue"),
+     "Name of the tun_srsue device")
 
      ("expert.mbms_service",
      bpo::value<int>(&args->expert.mbms_service)->default_value(-1),
@@ -213,7 +215,7 @@ void parse_args(all_args_t *args, int argc, char *argv[]) {
      "Sets the noise estimation algorithm. (Default refs)")
 
     ("expert.pdsch_max_its",
-     bpo::value<int>(&args->expert.phy.pdsch_max_its)->default_value(4),
+     bpo::value<int>(&args->expert.phy.pdsch_max_its)->default_value(8),
      "Maximum number of turbo decoder iterations")
 
     ("expert.attach_enable_64qam",
@@ -306,14 +308,9 @@ void parse_args(all_args_t *args, int argc, char *argv[]) {
      bpo::value<bool>(&args->expert.phy.pdsch_csi_enabled)->default_value(true),
      "Stores the Channel State Information and uses it for weightening the softbits. It is only used in TM1.")
 
-    ("rf_calibration.tx_corr_dc_gain", bpo::value<float>(&args->rf_cal.tx_corr_dc_gain)->default_value(0.0),
-     "TX DC offset gain correction")
-    ("rf_calibration.tx_corr_dc_phase", bpo::value<float>(&args->rf_cal.tx_corr_dc_phase)->default_value(0.0),
-     "TX DC offset phase correction")
-    ("rf_calibration.tx_corr_iq_i", bpo::value<float>(&args->rf_cal.tx_corr_iq_i)->default_value(0.0),
-     "TX IQ imbalance inphase correction")
-    ("rf_calibration.tx_corr_iq_q", bpo::value<float>(&args->rf_cal.tx_corr_iq_q)->default_value(0.0),
-     "TX IQ imbalance quadrature correction");
+    ("expert.pdsch_8bit_decoder",
+       bpo::value<bool>(&args->expert.phy.pdsch_8bit_decoder)->default_value(false),
+       "Use 8-bit for LLR representation and turbo decoder trellis computation (Experimental)");
 
   // Positional options - config file location
   bpo::options_description position("Positional options");
@@ -544,7 +541,7 @@ int main(int argc, char *argv[])
   pthread_create(&input, NULL, &input_loop, &args);
 
   printf("Attaching UE...\n");
-  while (!ue->attach() && running) {
+  while (!ue->switch_on() && running) {
     sleep(1);
   }
   if (running) {
@@ -584,6 +581,7 @@ int main(int argc, char *argv[])
     }
     sleep(1);
   }
+  ue->switch_off();
   pthread_cancel(input);
   metricshub.stop();
   ue->stop();

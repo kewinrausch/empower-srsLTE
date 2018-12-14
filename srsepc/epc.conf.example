@@ -40,13 +40,32 @@ db_file = user_db.csv
 #####################################################################
 # SP-GW configuration
 #
-# gtpu_bind_addr:   GTP-U bind adress.
+# gtpu_bind_addr:   GTP-U bind address.
+# sgi_if_addr:      SGi TUN interface IP address.
+# sgi_if_name:      SGi TUN interface name.
 #
 #####################################################################
 
 [spgw]
-gtpu_bind_addr=127.0.1.100
-sgi_if_addr=172.16.0.1
+gtpu_bind_addr = 127.0.1.100
+sgi_if_addr    = 172.16.0.1
+sgi_if_name    = srs_spgw_sgi
+
+####################################################################
+# PCAP configuration
+#
+# Packets are captured to file in the compact format decoded by 
+# the Wireshark s1ap dissector and with DLT 150. 
+# To use the dissector, edit the preferences for DLT_USER to 
+# add an entry with DLT=150, Payload Protocol=s1ap.
+#
+# enable:   Enable or disable the PCAP.
+# filename: File name where to save the PCAP.
+#
+####################################################################
+[pcap]
+enable   = false
+filename = /tmp/epc.pcap
 
 ####################################################################
 # Log configuration

@@ -31,6 +31,7 @@
 #include <pthread.h>
 
 #include "srslte/common/config_file.h"
+#include "srslte/common/crash_handler.h"
 
 #include <iostream>
 #include <string>
@@ -150,9 +151,7 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
         bpo::value<int>(&args->expert.mac.sched.nof_ctrl_symbols)->default_value(3),
         "Number of control symbols")
 
-    
     /* Expert section */
-
     ("expert.metrics_period_secs",
         bpo::value<float>(&args->expert.metrics_period_secs)->default_value(1.0),
         "Periodicity for metrics in seconds")
@@ -162,10 +161,14 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
         "Pregenerate uplink signals after attach. Improves CPU performance.")
 
     ("expert.pusch_max_its",
-        bpo::value<int>(&args->expert.phy.pusch_max_its)->default_value(4),
+        bpo::value<int>(&args->expert.phy.pusch_max_its)->default_value(8),
         "Maximum number of turbo decoder iterations")
 
-    ("expert.tx_amplitude",
+      ("expert.pusch_8bit_decoder",
+       bpo::value<bool>(&args->expert.phy.pusch_8bit_decoder)->default_value(false),
+       "Use 8-bit for LLR representation and turbo decoder trellis computation (Experimental)")
+
+      ("expert.tx_amplitude",
         bpo::value<float>(&args->expert.phy.tx_amplitude)->default_value(0.6),
         "Transmit amplitude factor")
 
@@ -192,20 +195,22 @@ void parse_args(all_args_t *args, int argc, char* argv[]) {
     ("expert.rrc_inactivity_timer",
         bpo::value<uint32_t>(&args->expert.rrc_inactivity_timer)->default_value(60000),
         "Inactivity timer in ms")
-  
+
     ("expert.enable_mbsfn",
         bpo::value<bool>(&args->expert.enable_mbsfn)->default_value(false),
-        "enables mbms in the enodeb")
+        "Enables MBMS in the eNB")
 
     ("expert.print_buffer_state",
         bpo::value<bool>(&args->expert.print_buffer_state)->default_value(false),
        "Prints on the console the buffer state every 10 seconds")
 
-    ("rf_calibration.tx_corr_dc_gain",  bpo::value<float>(&args->rf_cal.tx_corr_dc_gain)->default_value(0.0),  "TX DC offset gain correction")
-    ("rf_calibration.tx_corr_dc_phase", bpo::value<float>(&args->rf_cal.tx_corr_dc_phase)->default_value(0.0), "TX DC offset phase correction")
-    ("rf_calibration.tx_corr_iq_i",     bpo::value<float>(&args->rf_cal.tx_corr_iq_i)->default_value(0.0),     "TX IQ imbalance inphase correction")
-    ("rf_calibration.tx_corr_iq_q",     bpo::value<float>(&args->rf_cal.tx_corr_iq_q)->default_value(0.0),     "TX IQ imbalance quadrature correction")
+    ("expert.m1u_multiaddr",
+     bpo::value<string>(&args->expert.m1u_multiaddr)->default_value("239.255.0.1"),
+     "M1-U Multicast address the eNB joins.")
 
+    ("expert.m1u_if_addr",
+     bpo::value<string>(&args->expert.m1u_if_addr)->default_value("127.0.1.201"),
+     "IP address of the interface the eNB will listen for M1-U traffic.")
   ;
 
   // Positional options - config file location
