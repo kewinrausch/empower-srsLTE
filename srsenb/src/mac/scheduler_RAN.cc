@@ -637,7 +637,7 @@ int ran_multi_ssched::set_resources(uint64_t id, int tti, int res)
  * "DUO-DYNAMIC" SLICE-ASSIGNMENT SCHEDULER
  *
  */
-
+#if 0
 /* Routine:
  *    ran_duodynamic_ssched::ran_duodynamic_ssched()
  *
@@ -961,7 +961,7 @@ cont:
 
   return;
 }
-
+#endif
 /******************************************************************************
  *                                                                            *
  *                        DL part of RAN scheduler                            *
@@ -1064,12 +1064,6 @@ int  dl_metric_ran::add_slice(uint64_t id)
   // Creates the slice and assign a default RR user scheduler to it
   m_slice_map[id].sched_user = new ran_rr_usched();
 
-//------------------------------------------------------------------------------ TEMPORARY!
-//  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenA != id) {
-//    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = id;
-//  }
-//------------------------------------------------------------------------------ TEMPORARY!
-
   pthread_spin_unlock(&m_lock);
 
   Info("Slice %" PRIu64 " added to RAN MAC scheduler\n", id);
@@ -1112,12 +1106,6 @@ void dl_metric_ran::rem_slice(uint64_t id)
     pthread_spin_unlock(&m_lock);
     return;
   }
-
-//------------------------------------------------------------------------------ TEMPORARY!
-//  if(((ran_duodynamic_ssched *)m_slice_sched)->m_tenB == id) {
-//    ((ran_duodynamic_ssched *)m_slice_sched)->m_tenB = 0L;
-//  }
-//------------------------------------------------------------------------------ TEMPORARY!
 
   us = it->second.sched_user;
   m_slice_map.erase(it);

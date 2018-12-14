@@ -1050,7 +1050,7 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
   switch(ul_dcch_msg.msg_type) {
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_SETUP_COMPLETE:
       handle_rrc_con_setup_complete(&ul_dcch_msg.msg.rrc_con_setup_complete, pdu);
-#if 0
+#if 1
       send_identity_request();
 #endif
       break;      
@@ -1116,7 +1116,52 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
   int      i;
   uint64_t tmp;
 
-  LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT srm;
+  //uint8_t  at;
+  //LIBLTE_MME_EPS_MOBILE_ID_STRUCT * eps = 0;
+  
+  // This part is taken from srsEPC Attach Request handlind is s1ap_nas_transport.cc, procedure handle_nas_attach_request()
+  LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT           attach_req;
+  LIBLTE_MME_PDN_CONNECTIVITY_REQUEST_MSG_STRUCT pdn_con_req;
+  LIBLTE_ERROR_ENUM                              err;
+
+  //Get NAS Attach Request and PDN connectivity request messages
+  err = liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)&msg->dedicated_info_nas, &attach_req);
+
+  if(err == LIBLTE_SUCCESS) {
+    //at  = attach_req.eps_attach_type;
+    //eps = &attach_req.eps_mobile_id;
+
+    //if(eps) {
+      switch(attach_req.eps_mobile_id.type_of_id) {
+      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
+        tmp = 0;
+
+        for(i = 0; i <= 14; i++){
+          tmp += attach_req.eps_mobile_id.imsi[i] * std::pow(10, 14 - i);
+        }
+
+        // Update the IMSI
+        parent->agent->update_user_ID(rnti, 0, tmp, 0);
+
+        break;
+      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
+        // Update the PLMN and the TMSI
+        parent->agent->update_user_ID(
+          rnti, 
+          0,
+          0, 
+          attach_req.eps_mobile_id.guti.m_tmsi);
+        break;
+      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
+        // IMEI not handled right now
+        break;
+      default:
+        break;  
+      }
+    //}
+
+    err = liblte_mme_unpack_pdn_connectivity_request_msg(&attach_req.esm_msg, &pdn_con_req);
+  }
 
   parent->rrc_log->info("RRCConnectionSetupComplete transaction ID: %d\n", msg->rrc_transaction_id);
 
@@ -1125,35 +1170,6 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
 
   memcpy(pdu->msg, msg->dedicated_info_nas.msg, msg->dedicated_info_nas.N_bytes);
   pdu->N_bytes = msg->dedicated_info_nas.N_bytes;
-
-  if(liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)pdu, &srm) == LIBLTE_SUCCESS) {
-    switch(srm.eps_mobile_id.type_of_id) {
-    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
-      tmp = 0;
-
-      for(i = 0; i <= 14; i++){
-        tmp += srm.eps_mobile_id.imsi[i] * std::pow(10,14 - i);
-      }
-
-      // Update the IMSI
-      parent->agent->update_user_ID(rnti, 0, tmp, 0);
-
-      break;
-    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
-      // Update the PLMN and the TMSI
-      parent->agent->update_user_ID(
-        rnti, 
-        0,
-        0, 
-        srm.eps_mobile_id.guti.m_tmsi);
-      break;
-    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
-      // IMEI not handled right now
-      break;
-    default:
-      break;  
-    }
-  }
 
   // Acknowledge Dedicated Configuration
   parent->phy->set_conf_dedicated_ack(rnti, true);
@@ -1164,7 +1180,10 @@ void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE
   } else {
     parent->s1ap->initial_ue(rnti, (LIBLTE_S1AP_RRC_ESTABLISHMENT_CAUSE_ENUM)establishment_cause, pdu);
   }
+
   state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
+
+  return;
 }
 
 void rrc::ue::handle_rrc_ul_info_transfer(LIBLTE_RRC_UL_INFORMATION_TRANSFER_STRUCT * msg, srslte::byte_buffer_t * pdu)
