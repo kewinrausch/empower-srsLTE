@@ -1884,7 +1884,7 @@ void empower_agent::update_user_ID(
     m_RAN_def_dirty = 1;
 #endif
 
-#if 1
+#if 0
   // Always operate on that UE
   if(imsi == 222930000000101L) {
     // Add it to a slice

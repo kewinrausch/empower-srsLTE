@@ -89,16 +89,6 @@ int ran::init(mac_interface_ran * mac, srslte::log * log)
   m_log   = log;
   m_mac   = mac;
 
-  memset(&sargs, 0, sizeof(sargs));
-
-  sargs.l2.mac.user_sched = RAN_MAC_USER_RR;
-  sargs.l2.mac.rbg        = 6;
-  sargs.l2.mac.time       = 1;
-
-  // TEMPORARY: Add and set default slice for 222f93 PLMN
-  add_slice(0x00222f9300000000, 0);
-  set_slice(0x00222f9300000000, &sargs);
-
   return 0;
 }
 
