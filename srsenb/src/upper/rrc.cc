@@ -2004,7 +2004,7 @@ void rrc::ue::send_identity_request()
     return;
   }
 
-  mask_id_resp = 1;
+  //mask_id_resp = 1;
   send_dl_dcch(&dl_dcch_msg);
 
   return;
