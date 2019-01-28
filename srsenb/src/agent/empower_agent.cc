@@ -1725,9 +1725,10 @@ void empower_agent::process_UL_results(
  *    RRC layer reporting that Radio Resources for a new user have been
  *    allocated, and thus we have to consider it too. This operations should be
  *    performed in a quick way, since the execution context is the PRACH one.
+ *    This procedure does not mark the user to be reported to the controller.
  * 
  * Assumptions:
- *    ---
+ *    Lock hold by the caller.
  * 
  * Arguments:
  *    - rnti, ID of the user to add
@@ -1740,7 +1741,8 @@ void empower_agent::add_user(uint16_t rnti)
   std::map<uint16_t, em_ue *>::iterator it;
   all_args_t * args = (all_args_t *)m_args;
 
-  Lock(&m_lock);
+  // Locking disabled since the procedure should be hold by the caller
+  //Lock(&m_lock);
 
   it = m_ues.find(rnti);
 
@@ -1750,12 +1752,8 @@ void empower_agent::add_user(uint16_t rnti)
 
     m_ues[rnti]->m_plmn  = (args->enb.s1ap.mcc & 0x0fff) << 12;
     m_ues[rnti]->m_plmn |= (args->enb.s1ap.mnc & 0x0fff);
-    m_ues[rnti]->m_imsi  = 0;
-    m_ues[rnti]->m_tmsi  = 0;
-    m_ues[rnti]->m_id_dirty = 1; // Mark as to send
 
-    m_ues[rnti]->m_state = UE_STATUS_RADIO_CONNECTED;
-    m_ues[rnti]->m_state_dirty  = 1; // Mark as to send
+    m_ues[rnti]->m_state = UE_STATUS_CONNECTED;
 
     m_ues[rnti]->m_next_meas_id = 1;
     m_ues[rnti]->m_next_obj_id  = 1;
@@ -1779,7 +1777,8 @@ void empower_agent::add_user(uint16_t rnti)
     Debug("Added user %x (PLMN:%x)\n", rnti, m_ues[rnti]->m_plmn);
   }
 
-  Unlock(&m_lock);
+  // Locking disabled since the procedure should be hold by the caller
+  //Unlock(&m_lock);
 }
 
 /* Routine:
@@ -1810,17 +1809,12 @@ void empower_agent::rem_user(uint16_t rnti)
   if(it != m_ues.end()) {
     Debug("Removing user %x\n", rnti);
 
-    //ue = it->second;
-    //m_nof_ues--;
-    //m_ues.erase(it);
-    m_ues[rnti]->m_state       = UE_STATUS_RADIO_DISCONNECTED;
+    m_ues[rnti]->m_state       = UE_STATUS_DISCONNECTED;
     m_ues[rnti]->m_state_dirty = 1; // Mark as to update
 
     if(m_uer_feat) {
       m_ues_dirty = 1;
     }
-
-    //delete it->second;
 
 #ifdef HAVE_RAN_SLICER
     m_RAN_def_dirty = 1;
@@ -1857,7 +1851,15 @@ void empower_agent::update_user_ID(
 
   Lock(&m_lock);
 
+  // First attempt, check if the user is already there
   it = m_ues.find(rnti);
+
+  if(it == m_ues.end()) {
+    add_user(rnti);
+
+    // Second attempt, the user should be added by now
+    it = m_ues.find(rnti);
+  }
 
   if(it != m_ues.end()) {
     Debug("Updating user %x identity\n", rnti);
@@ -1884,25 +1886,6 @@ void empower_agent::update_user_ID(
     m_RAN_def_dirty = 1;
 #endif
 
-#if 0
-  // Always operate on that UE
-  if(imsi == 222930000000101L) {
-    // Add it to a slice
-    m_ran->add_slice_user(
-      rnti,
-      0x00222f9301000000,
-      0);
-
-    // Remove from the default one '00'
-    m_ran->rem_slice_user(
-      rnti,
-      0x00222f9300000000);
-
-    printf("UE %x moved to slice 1\n", rnti);
-  } else {
-    printf("Normal UE %x\n", rnti);
-  }
-#endif
   }
 
   Unlock(&m_lock);
@@ -2045,11 +2028,12 @@ void empower_agent::send_UE_report(void)
   std::map<uint16_t, em_ue *>::iterator it;
   
   em_ue *       ue;
-  int           i       = 0;
+  int           i = 0;
   int           r; /* will be reported? */
   char          buf[EMPOWER_AGENT_BUF_SMALL_SIZE];
   int           size;
   ep_ue_details ued[16];
+  int           uel = 16;
 
   all_args_t * args = (all_args_t *)m_args;
 
@@ -2057,19 +2041,26 @@ void empower_agent::send_UE_report(void)
 
   Lock(&m_lock);
 
-  for(it = m_ues.begin(); i < 16 && it !=  m_ues.end(); /* Nothing */) {
+  for(it = m_ues.begin(); i < uel && it !=  m_ues.end(); /* Nothing */) {
     ue = it->second;
     r  = 0;
 
     // State first; if the UE disconnects the identity is not interesting
-    if(ue->m_state_dirty) {
-      ued[i].rnti = it->first;
-      ued[i].state= ue->m_state;
+    if(ue->m_id_dirty || ue->m_state_dirty) {
+      ued[i].rnti  = it->first;
+      ued[i].rnti  = it->first;
+      ued[i].plmn  = ue->m_plmn;
+      ued[i].imsi  = ue->m_imsi;
+      ued[i].tmsi  = ue->m_tmsi;
+      ued[i].state = ue->m_state;
 
       ue->m_state_dirty = 0;
+      ue->m_id_dirty    = 0;
+
       r = 1;
+
       // We are reporting the UE going offline
-      if(ue->m_state == UE_STATUS_RADIO_DISCONNECTED) {
+      if(ue->m_state == UE_STATUS_DISCONNECTED) {
         m_ues.erase(it++); // Increment iterator
         m_nof_ues--;
 
@@ -2080,16 +2071,6 @@ void empower_agent::send_UE_report(void)
       }
     }
 
-    if(ue->m_id_dirty) {
-      ued[i].rnti = it->first;
-      ued[i].plmn = ue->m_plmn;
-      ued[i].imsi = ue->m_imsi;
-      ued[i].tmsi = ue->m_tmsi;
-
-      ue->m_id_dirty = 0;
-      r = 1;
-    }
-
     if(r) {
       i++;// Next reporting slot
     }
@@ -2098,6 +2079,10 @@ void empower_agent::send_UE_report(void)
   }
 
   Unlock(&m_lock);
+
+  if(i == uel) {
+    Warning("Too much UEs to report; current limit set to %d\n", uel);
+  }
 
   size = epf_trigger_uerep_rep(
     buf,

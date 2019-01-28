@@ -190,7 +190,7 @@ void rrc::add_user(uint16_t rnti)
         (int)cfg.sibs[0].sib.sib1.plmn_id[0].id.mnc),
       0);
 #endif
-    agent->add_user(rnti);
+    //agent->add_user(rnti);
 
     rrc_log->info("Added new user rnti=0x%x\n", rnti);
   } else {
@@ -926,21 +926,21 @@ void rrc::activity_monitor::run_thread()
 *******************************************************************************/
 rrc::ue::ue()
 {
-  parent            = NULL;
+  parent           = NULL;
   set_activity();
-  has_tmsi          = false;
-  connect_notified  = false;
-  transaction_id    = 0;
-  sr_allocated      = false;
-  sr_sched_sf_idx   = 0;
-  sr_sched_prb_idx  = 0;
-  sr_N_pucch        = 0;
-  sr_I              = 0;
-  cqi_allocated     = false;
-  cqi_pucch         = 0;
-  cqi_idx           = 0;
-  cqi_sched_sf_idx  = 0;
-  cqi_sched_prb_idx = 0;
+  has_tmsi         = false;
+  connect_notified = false;
+  transaction_id   = 0;
+  sr_allocated     = false;
+  sr_sched_sf_idx  = 0;
+  sr_sched_prb_idx = 0;
+  sr_N_pucch       = 0;
+  sr_I             = 0;
+  cqi_allocated    = false;
+  cqi_pucch        = 0;
+  cqi_idx          = 0;
+  cqi_sched_sf_idx = 0;
+  cqi_sched_prb_idx= 0;
   rlf_cnt          = 0;
   mask_id_resp     = 0;
   state            = RRC_STATE_IDLE;
@@ -1050,15 +1050,17 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
   switch(ul_dcch_msg.msg_type) {
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_SETUP_COMPLETE:
       handle_rrc_con_setup_complete(&ul_dcch_msg.msg.rrc_con_setup_complete, pdu);
+/* WARNING:
+ * This hack allows to mimic the EPC and request the identity from the UE.
+ * This operation is legit during the first connection of the UE with an EPC, but
+ * used like this is not part of a standard
+ */
 #if 1
       send_identity_request();
 #endif
       break;      
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_UL_INFO_TRANSFER:
       handle_rrc_ul_info_transfer(&ul_dcch_msg.msg.ul_info_transfer, pdu);
-      //memcpy(pdu->msg, ul_dcch_msg.msg.ul_info_transfer.dedicated_info.msg, ul_dcch_msg.msg.ul_info_transfer.dedicated_info.N_bytes);
-      //pdu->N_bytes = ul_dcch_msg.msg.ul_info_transfer.dedicated_info.N_bytes;
-      //parent->s1ap->write_pdu(rnti, pdu);
       break;
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_RECONFIG_COMPLETE:
       handle_rrc_reconf_complete(&ul_dcch_msg.msg.rrc_con_reconfig_complete, pdu);
@@ -1113,56 +1115,56 @@ void rrc::ue::handle_rrc_con_reest_req(LIBLTE_RRC_CONNECTION_REESTABLISHMENT_REQ
 
 void rrc::ue::handle_rrc_con_setup_complete(LIBLTE_RRC_CONNECTION_SETUP_COMPLETE_STRUCT *msg, srslte::byte_buffer_t *pdu)
 {
+#if 0 // Disabled right now; this is now handled elsewhere (see handle_rrc_ul_info_transfer)
   int      i;
-  uint64_t tmp;
+  uint64_t tmp = 0;
 
-  //uint8_t  at;
-  //LIBLTE_MME_EPS_MOBILE_ID_STRUCT * eps = 0;
-  
   // This part is taken from srsEPC Attach Request handlind is s1ap_nas_transport.cc, procedure handle_nas_attach_request()
   LIBLTE_MME_ATTACH_REQUEST_MSG_STRUCT           attach_req;
   LIBLTE_MME_PDN_CONNECTIVITY_REQUEST_MSG_STRUCT pdn_con_req;
   LIBLTE_ERROR_ENUM                              err;
 
+  /* NOTE: Using this you will be able to detect on which PLMN the UE has been accepted to attach to.
+   *       Take into account that probably the 1st slot is the transmittind cell PLMN-ID
+   */
+  if(msg->selected_plmn_id != 1) {
+    parent->rrc_log->warning("UE trying to connect to PLMN-ID index %d; Roaming-like scenario?\n", msg->selected_plmn_id);
+  }
+
   //Get NAS Attach Request and PDN connectivity request messages
   err = liblte_mme_unpack_attach_request_msg((LIBLTE_BYTE_MSG_STRUCT *)&msg->dedicated_info_nas, &attach_req);
 
   if(err == LIBLTE_SUCCESS) {
-    //at  = attach_req.eps_attach_type;
-    //eps = &attach_req.eps_mobile_id;
-
-    //if(eps) {
-      switch(attach_req.eps_mobile_id.type_of_id) {
-      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
-        tmp = 0;
-
-        for(i = 0; i <= 14; i++){
-          tmp += attach_req.eps_mobile_id.imsi[i] * std::pow(10, 14 - i);
-        }
-
-        // Update the IMSI
-        parent->agent->update_user_ID(rnti, 0, tmp, 0);
-
-        break;
-      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
-        // Update the PLMN and the TMSI
-        parent->agent->update_user_ID(
-          rnti, 
-          0,
-          0, 
-          attach_req.eps_mobile_id.guti.m_tmsi);
-        break;
-      case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
-        // IMEI not handled right now
-        break;
-      default:
-        break;  
+    switch(attach_req.eps_mobile_id.type_of_id) {
+    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMSI:
+      for(i = 0; i <= 14; i++){
+        tmp += attach_req.eps_mobile_id.imsi[i] * std::pow(10, 14 - i);
       }
-    //}
+
+      // Add and update the UE in the agent subsystem
+      //parent->agent->update_user_ID(
+      //  rnti, 0, tmp, attach_req.eps_mobile_id.guti.m_tmsi);
+/* TO REMOVE: */
+printf("IMSI attach detected, %ld\n", tmp);
+      break;
+    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_GUTI:
+/* TO REMOVE: */
+printf("GUTI attach detected\n");
+      break;
+    case LIBLTE_MME_EPS_MOBILE_ID_TYPE_IMEI:
+      // IMEI not handled right now
+      break;
+    default:
+/* TO REMOVE: */
+printf("Attach type %d\n", attach_req.eps_mobile_id.type_of_id);
+      break;
+    }
+
+printf("UE TSMI is %x\n", attach_req.eps_mobile_id.guti.m_tmsi);
 
     err = liblte_mme_unpack_pdn_connectivity_request_msg(&attach_req.esm_msg, &pdn_con_req);
   }
-
+#endif
   parent->rrc_log->info("RRCConnectionSetupComplete transaction ID: %d\n", msg->rrc_transaction_id);
 
   // TODO: msg->selected_plmn_id - used to select PLMN from SIB1 list
@@ -1214,8 +1216,8 @@ void rrc::ue::handle_rrc_ul_info_transfer(LIBLTE_RRC_UL_INFORMATION_TRANSFER_STR
         imsi += id_resp.mobile_id.imsi[i] * std::pow(10,14 - i);
       }
 
-      // Update the IMSI
-      parent->agent->update_user_ID(rnti, 0, imsi, 0);
+      // Update the IMSI and TMSI values
+      parent->agent->update_user_ID(rnti, 0, imsi, id_resp.mobile_id.tmsi);
 
       // Don't forward this message if it has to be masked
       if(mask_id_resp) {
@@ -2004,7 +2006,12 @@ void rrc::ue::send_identity_request()
     return;
   }
 
-  mask_id_resp = 1;
+  /* NOTE: Setting this to one will allow to mask the Identity Request reply
+   * sent by the UE to the Core Network. Mind that such behavior can cause state-machine
+   * miss-alignment between UE and CN. This can cause Short Integrity Checks to fail with
+   * higher frequency.
+   */ 
+  //mask_id_resp = 1;
   send_dl_dcch(&dl_dcch_msg);
 
   return;
