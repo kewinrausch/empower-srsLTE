@@ -329,6 +329,7 @@ public:
   virtual void add_user(uint16_t rnti) = 0;
   virtual void rem_user(uint16_t rnti) = 0;
   virtual void update_user_ID(uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi) = 0;
+  virtual void report_user(uint16_t rnti) = 0;
   virtual void report_RRC_measure(uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report) = 0;
 }; // agent_interface_rrc
 

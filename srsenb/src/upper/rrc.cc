@@ -1050,14 +1050,6 @@ void rrc::ue::parse_ul_dcch(uint32_t lcid, byte_buffer_t *pdu)
   switch(ul_dcch_msg.msg_type) {
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_RRC_CON_SETUP_COMPLETE:
       handle_rrc_con_setup_complete(&ul_dcch_msg.msg.rrc_con_setup_complete, pdu);
-/* WARNING:
- * This hack allows to mimic the EPC and request the identity from the UE.
- * This operation is legit during the first connection of the UE with an EPC, but
- * used like this is not part of a standard
- */
-#if 1
-      send_identity_request();
-#endif
       break;      
     case LIBLTE_RRC_UL_DCCH_MSG_TYPE_UL_INFO_TRANSFER:
       handle_rrc_ul_info_transfer(&ul_dcch_msg.msg.ul_info_transfer, pdu);
@@ -1185,6 +1177,15 @@ printf("UE TSMI is %x\n", attach_req.eps_mobile_id.guti.m_tmsi);
 
   state = RRC_STATE_WAIT_FOR_CON_RECONF_COMPLETE;
 
+/* WARNING:
+ * This hack allows to mimic the EPC and request the identity from the UE.
+ * This operation is legit during the first connection of the UE with an EPC, but
+ * used like this is not part of a standard
+ */
+#if 1
+  send_identity_request();
+#endif
+
   return;
 }
 
@@ -1242,6 +1243,8 @@ void rrc::ue::handle_rrc_reconf_complete(LIBLTE_RRC_CONNECTION_RECONFIGURATION_C
 {
   parent->rrc_log->info("RRCReconfigurationComplete transaction ID: %d\n", msg->rrc_transaction_id);
 
+  // Time to report that the user is online to the controller
+  parent->agent->report_user(rnti);
 
   // Acknowledge Dedicated Configuration
   parent->phy->set_conf_dedicated_ack(rnti, true);

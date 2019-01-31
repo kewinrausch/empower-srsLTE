@@ -277,6 +277,9 @@ public:
   void update_user_ID(
     uint16_t rnti, uint32_t plmn, uint64_t imsi, uint32_t tmsi);
 
+  // Report the user information/state to the management layers
+  void report_user(uint16_t rnti);
+
   // Report an RRC measurement arrived from an UE
   void report_RRC_measure(
     uint16_t rnti, LIBLTE_RRC_MEASUREMENT_REPORT_STRUCT * report);

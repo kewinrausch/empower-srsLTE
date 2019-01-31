@@ -207,6 +207,26 @@ void dummy_agent::update_user_ID(
 }
 
 /* Routine:
+ *    empower_agent::report_user
+ * 
+ * Abstract:
+ *    RRC layer inform the agent to report the selected user to the controller.
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - rnti, ID of the user to report
+ * 
+ * Returns:
+ *    ---
+ */
+void dummy_agent::report_user(uint16_t rnti)
+{
+  return;
+}
+
+/* Routine:
  *    dummy_agent::report_RRC_measure
  * 
  * Abstract:

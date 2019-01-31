@@ -1876,16 +1876,58 @@ void empower_agent::update_user_ID(
       m_ues[rnti]->m_tmsi = tmsi;
     }
     
-    m_ues[rnti]->m_id_dirty = 1; // Mark as identity to update
+//    m_ues[rnti]->m_id_dirty = 1; // Mark as identity to update
+
+//   if(m_uer_feat) {
+//      m_ues_dirty = 1;
+//    }
+
+//#ifdef HAVE_RAN_SLICER
+//    m_RAN_def_dirty = 1;
+//#endif
+
+  }
+
+  Unlock(&m_lock);
+}
+
+/* Routine:
+ *    empower_agent::update_user_ID
+ * 
+ * Abstract:
+ *    RRC layer informs me to report this user to the management layer
+ * 
+ * Assumptions:
+ *    ---
+ * 
+ * Arguments:
+ *    - rnti, ID of the user to report
+ * 
+ * Returns:
+ *    ---
+ */
+void empower_agent::report_user(uint16_t rnti) 
+{
+  em_ue * ue;
+  std::map<uint16_t, em_ue *>::iterator it;
+
+  Lock(&m_lock);
+
+  // Check if the user exists
+  it = m_ues.find(rnti);
+
+  if(it != m_ues.end()) {
+    m_ues[rnti]->m_state = UE_STATUS_CONNECTED;
+    m_ues[rnti]->m_state_dirty = 1;
+    m_ues[rnti]->m_id_dirty = 1;
 
     if(m_uer_feat) {
       m_ues_dirty = 1;
     }
-
+    
 #ifdef HAVE_RAN_SLICER
     m_RAN_def_dirty = 1;
 #endif
-
   }
 
   Unlock(&m_lock);
