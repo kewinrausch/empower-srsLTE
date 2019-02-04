@@ -1875,17 +1875,23 @@ void empower_agent::update_user_ID(
     if(tmsi) {
       m_ues[rnti]->m_tmsi = tmsi;
     }
-    
-//    m_ues[rnti]->m_id_dirty = 1; // Mark as identity to update
+  }
 
-//   if(m_uer_feat) {
-//      m_ues_dirty = 1;
-//    }
+  for(it = m_ues.begin(); it != m_ues.end(); ++it) {
+    ue = it->second;
 
-//#ifdef HAVE_RAN_SLICER
-//    m_RAN_def_dirty = 1;
-//#endif
+    /* UE renewed its RNTI, but subscription info are still the same */
+    if(imsi != 0 && ue->m_imsi == imsi && it->first != rnti) {
+printf("Detected UE RNTI migration from %x to %x\n", it->first, rnti);
+      /* Reset personal fields to avoid controller problems */
+      ue->m_imsi = 0;
+      ue->m_tmsi = 0;
+    }
 
+    /* UE renewed its RNTI, but temporary info are still the same */
+    if(tmsi != 0 && ue->m_tmsi == tmsi && it->first != rnti) {
+      ue->m_tmsi = 0;
+    }
   }
 
   Unlock(&m_lock);
