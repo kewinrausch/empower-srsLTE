@@ -1882,7 +1882,6 @@ void empower_agent::update_user_ID(
 
     /* UE renewed its RNTI, but subscription info are still the same */
     if(imsi != 0 && ue->m_imsi == imsi && it->first != rnti) {
-printf("Detected UE RNTI migration from %x to %x\n", it->first, rnti);
       /* Reset personal fields to avoid controller problems */
       ue->m_imsi = 0;
       ue->m_tmsi = 0;
