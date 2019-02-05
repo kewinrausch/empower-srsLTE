@@ -2009,11 +2009,6 @@ void rrc::ue::send_identity_request()
     return;
   }
 
-  /* NOTE: Setting this to one will allow to mask the Identity Request reply
-   * sent by the UE to the Core Network. Mind that such behavior can cause state-machine
-   * miss-alignment between UE and CN. This can cause Short Integrity Checks to fail with
-   * higher frequency.
-   */ 
   //mask_id_resp = 1;
   send_dl_dcch(&dl_dcch_msg);
 
